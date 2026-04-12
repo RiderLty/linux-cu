@@ -1,0 +1,1 @@
+C:\WINDOWS\System32\WindowsPowerShell\v1.0\powershell.exe -ExecutionPolicy Bypass -NoExit -File "C:\Espressif/Initialize-Idf.ps1" -IdfId esp-idf-d8385ac05a174f441556f52f49cc7a3f
