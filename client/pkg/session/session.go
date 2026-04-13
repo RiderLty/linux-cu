@@ -12,6 +12,13 @@ import (
 	"github.com/linux-cu/client/pkg/usb"
 )
 
+// hidEndpoint 记录 HID 接口的中断 IN 端点信息
+type hidEndpoint struct {
+	InterfaceNumber uint8
+	EndpointAddress uint8
+	MaxPacketSize   uint16
+}
+
 // Config 会话配置
 type Config struct {
 	SerialDevice string
@@ -73,8 +80,68 @@ func (s *Session) Run(ctx context.Context) error {
 		return fmt.Errorf("start emulation: %w", err)
 	}
 
-	// Phase 6: 仿真循环 — 转发控制传输 + 心跳
-	return s.emulationLoop(ctx)
+	// Phase 6: 打开真实设备，启动 HID 报表轮询
+	var hidEndpoints []hidEndpoint
+	if len(configs) > 0 {
+		for _, iface := range configs[0].Interfaces {
+			if iface.InterfaceClass != 0x03 { // HID class
+				continue
+			}
+			for _, ep := range iface.Endpoints {
+				// 中断 IN 端点: bit 7 = 1
+				if ep.EndpointAddress&0x80 != 0 && (ep.Attributes&0x03) == 0x03 {
+					hidEndpoints = append(hidEndpoints, hidEndpoint{
+						InterfaceNumber: iface.InterfaceNumber,
+						EndpointAddress: ep.EndpointAddress,
+						MaxPacketSize:   ep.MaxPacketSize,
+					})
+				}
+			}
+		}
+	}
+
+	var devHandle *usb.DeviceHandle
+	if len(hidEndpoints) > 0 {
+		devHandle, err = usb.OpenDevice(s.cfg.BusNumber, s.cfg.DevAddress)
+		if err != nil {
+			log.Printf("[HID] 无法打开真实设备: %v", err)
+		} else {
+			// 声明所有 HID 接口 (先 detach 内核驱动)
+			claimed := make(map[uint8]bool)
+			for _, ep := range hidEndpoints {
+				if !claimed[ep.InterfaceNumber] {
+					_ = devHandle.DetachKernelDriver(ep.InterfaceNumber)
+					if err := devHandle.ClaimInterface(ep.InterfaceNumber); err != nil {
+						log.Printf("[HID] 声明接口 %d 失败: %v", ep.InterfaceNumber, err)
+					} else {
+						claimed[ep.InterfaceNumber] = true
+					}
+				}
+			}
+			log.Printf("[HID] 已打开真实设备，%d 个中断 IN 端点待轮询", len(hidEndpoints))
+		}
+	}
+
+	// 启动 HID 报表轮询 goroutine
+	var hidPollCancel context.CancelFunc
+	if devHandle != nil && len(hidEndpoints) > 0 {
+		var hidCtx context.Context
+		hidCtx, hidPollCancel = context.WithCancel(ctx)
+		s.startHIDPolling(hidCtx, devHandle, hidEndpoints)
+	}
+
+	// Phase 7: 仿真循环 — 转发控制传输 + 心跳
+	loopErr := s.emulationLoop(ctx)
+
+	// 清理
+	if hidPollCancel != nil {
+		hidPollCancel()
+	}
+	if devHandle != nil {
+		devHandle.Close()
+	}
+
+	return loopErr
 }
 
 // handshake 发送 PING，等待 PONG + "P4OK"
@@ -212,7 +279,6 @@ func (s *Session) emulationLoop(ctx context.Context) error {
 	// 心跳等待状态
 	var hbMu sync.Mutex
 	hbPending := false
-	hbCh := make(chan struct{}, 1)
 
 	for {
 		select {
@@ -243,7 +309,6 @@ func (s *Session) emulationLoop(ctx context.Context) error {
 				if hbPending {
 					hbPending = false
 					missCount = 0
-					_ = hbCh
 				}
 				hbMu.Unlock()
 
@@ -300,4 +365,50 @@ func (s *Session) handleCtrlReq(f *serial.Frame) {
 		Cmd:     protocol.CmdCtrlData,
 		Payload: ctrlData.Marshal(),
 	})
+}
+
+// startHIDPolling 为每个中断 IN 端点启动轮询 goroutine
+func (s *Session) startHIDPolling(ctx context.Context, dev *usb.DeviceHandle, endpoints []hidEndpoint) {
+	for _, ep := range endpoints {
+		go s.pollEndpoint(ctx, dev, ep)
+	}
+}
+
+// pollEndpoint 持续轮询单个中断 IN 端点，将 HID 报表发送给 P4
+func (s *Session) pollEndpoint(ctx context.Context, dev *usb.DeviceHandle, ep hidEndpoint) {
+	pktSize := int(ep.MaxPacketSize)
+	if pktSize < 8 {
+		pktSize = 8
+	}
+	if pktSize > 255 {
+		pktSize = 255
+	}
+
+	log.Printf("[HID] 开始轮询接口 %d 端点 0x%02X (maxPacket=%d)", ep.InterfaceNumber, ep.EndpointAddress, pktSize)
+
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		default:
+		}
+
+		data, err := dev.InterruptRead(ep.EndpointAddress, pktSize, 100)
+		if err != nil {
+			log.Printf("[HID] 接口 %d 端点 0x%02X 读取错误: %v", ep.InterfaceNumber, ep.EndpointAddress, err)
+			return
+		}
+		if len(data) == 0 {
+			continue // 超时，继续
+		}
+
+		report := &protocol.HidReport{
+			Interface: ep.InterfaceNumber,
+			Data:      data,
+		}
+		s.port.SendFrame(serial.Frame{
+			Cmd:     protocol.CmdHidReport,
+			Payload: report.Marshal(),
+		})
+	}
 }

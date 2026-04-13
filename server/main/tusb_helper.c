@@ -397,3 +397,72 @@ void ctrl_set_callback(ctrl_req_cb_t cb, void *ctx) {
     s_ctrl_cb = cb;
     s_ctrl_ctx = ctx;
 }
+
+/* ---- Dummy class driver: 接受所有未知接口 ---- */
+/*
+ * tinyUSB 的 process_set_config() 遍历配置描述符中所有接口，
+ * 尝试为每个接口找到匹配的类驱动。如果找不到，SET_CONFIGURATION 失败。
+ * 此 dummy 驱动接受所有不被内置驱动（HID/CDC/MSC）处理的接口，
+ * 使包含 Audio 等非标准接口的设备（如 DS5 手柄）能正常枚举。
+ */
+#include "device/usbd_pvt.h"
+#include "common/tusb_private.h"
+
+static void     dummy_init(void) {}
+static bool     dummy_deinit(void) { return true; }
+static void     dummy_reset(uint8_t rhport) { (void)rhport; }
+
+static uint16_t dummy_open(uint8_t rhport, tusb_desc_interface_t const *desc_itf, uint16_t max_len) {
+    (void)rhport;
+    // 跳过内置驱动已处理的接口类
+    uint8_t cls = desc_itf->bInterfaceClass;
+    if (cls == TUSB_CLASS_HID ||           // 0x03 - HID 驱动处理
+        cls == TUSB_CLASS_CDC ||           // 0x02 - CDC 驱动处理
+        cls == TUSB_CLASS_CDC_DATA ||      // 0x0A - CDC Data 驱动处理
+        cls == TUSB_CLASS_MSC ||           // 0x08 - MSC 驱动处理
+        cls == TUSB_CLASS_VENDOR_SPECIFIC) // 0xFF - Vendor 驱动处理
+    {
+        return 0;
+    }
+    // Audio MIDI (class=0x01, subclass=0x03) 由 MIDI 驱动处理
+    if (cls == TUSB_CLASS_AUDIO && desc_itf->bInterfaceSubClass == 0x03) {
+        return 0;
+    }
+
+    // 接受所有其他接口（Audio Control, Audio Streaming 等）
+    uint16_t len = tu_desc_get_interface_total_len(desc_itf, 1, max_len);
+    if (len >= sizeof(tusb_desc_interface_t)) {
+        ESP_LOGD(TAG, "dummy: accepted iface %u class=0x%02X (%u bytes)",
+                 desc_itf->bInterfaceNumber, cls, len);
+        return len;
+    }
+    return 0;
+}
+
+static bool dummy_control_xfer_cb(uint8_t rhport, uint8_t stage, tusb_control_request_t const *request) {
+    (void)rhport; (void)stage; (void)request;
+    return false;
+}
+
+static bool dummy_xfer_cb(uint8_t rhport, uint8_t ep_addr, xfer_result_t result, uint32_t xferred_bytes) {
+    (void)rhport; (void)ep_addr; (void)result; (void)xferred_bytes;
+    return false;
+}
+
+static const usbd_class_driver_t s_dummy_driver = {
+    .name            = "PASSTHRU",
+    .init            = dummy_init,
+    .deinit          = dummy_deinit,
+    .reset           = dummy_reset,
+    .open            = dummy_open,
+    .control_xfer_cb = dummy_control_xfer_cb,
+    .xfer_cb         = dummy_xfer_cb,
+    .xfer_isr        = NULL,
+    .sof             = NULL,
+};
+
+/* 覆盖 weak 实现，注册 dummy 驱动 */
+usbd_class_driver_t const *usbd_app_driver_get_cb(uint8_t *driver_count) {
+    *driver_count = 1;
+    return &s_dummy_driver;
+}

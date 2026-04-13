@@ -187,6 +187,13 @@ func ReadDescriptors(bus, devAddr int) ([]ConfigDescriptor, DeviceDescriptor, er
 	}
 	defer C.libusb_close(handle)
 
+	// Detach 内核驱动 (需要读取 HID Report Descriptor)
+	for i := 0; i < 16; i++ {
+		if C.libusb_kernel_driver_active(handle, C.int(i)) == 1 {
+			C.libusb_detach_kernel_driver(handle, C.int(i))
+		}
+	}
+
 	// 读取设备描述符
 	var devDesc C.struct_libusb_device_descriptor
 	rc = C.libusb_get_device_descriptor(targetDev, &devDesc)
@@ -317,17 +324,16 @@ func parseConfigDescriptor(handle *C.libusb_device_handle, desc *C.struct_libusb
 			}
 
 			// 读取 HID Report Descriptor
-			if altDesc.bInterfaceClass == C.USB_CLASS_HID && altDesc.extra != nil {
-				// 解析 HID 描述符获取 Report Descriptor 长度
-				extraLen := int(altDesc.extra_length)
-				extra := C.GoBytes(unsafe.Pointer(altDesc.extra), C.int(extraLen))
-				reportLen := parseHIDReportDescriptorLength(extra)
+			if altDesc.bInterfaceClass == C.USB_CLASS_HID && altDesc.extra != nil && altDesc.extra_length > 0 {
+				// 从 extra 字节中找到 HID 描述符 (bDescriptorType == 0x21)
+				// extra 包含接口描述符之后的所有附属描述符字节
+				reportLen := findHIDReportDescriptorLen(altDesc.extra, int(altDesc.extra_length))
 				if reportLen > 0 {
 					reportBuf := make([]byte, reportLen)
 					rbuf := (*C.uchar)(unsafe.Pointer(&reportBuf[0]))
-					C.libusb_control_transfer(
+					ret := C.libusb_control_transfer(
 						handle,
-						C.uint8_t(0x81),                  // bmRequestType: Device-to-Host, Interface
+						C.uint8_t(0x81),                     // bmRequestType: Device-to-Host, Interface
 						C.uint8_t(C.USB_REQ_GET_DESCRIPTOR),  // bRequest
 						C.uint16_t(C.USB_DT_REPORT<<8),       // wValue: HID Report Descriptor
 						C.uint16_t(altDesc.bInterfaceNumber), // wIndex: Interface number
@@ -335,7 +341,9 @@ func parseConfigDescriptor(handle *C.libusb_device_handle, desc *C.struct_libusb
 						C.uint16_t(reportLen),
 						C.uint(1000),
 					)
-					id.ReportDescriptor = reportBuf
+					if ret > 0 {
+						id.ReportDescriptor = reportBuf[:ret]
+					}
 				}
 			}
 
@@ -346,15 +354,28 @@ func parseConfigDescriptor(handle *C.libusb_device_handle, desc *C.struct_libusb
 	return cd
 }
 
-// parseHIDReportDescriptorLength 从 HID 描述符 extra 中提取 Report Descriptor 长度
-// HID 描述符格式: bLength, bDescriptorType(0x21), bcdHID, bCountryCode, bNumDescriptors,
-//                  bDescriptorType2, wDescriptorLength(LE)
-func parseHIDReportDescriptorLength(extra []byte) int {
-	if len(extra) < 9 {
-		return 0
+// findHIDReportDescriptorLen 从 extra 字节中找到 HID 描述符并提取 Report Descriptor 长度
+// extra 包含接口描述符之后的所有附属描述符原始字节
+// HID 描述符格式: bLength, bDescriptorType(0x21), bcdHID(2), bCountryCode(1), bNumDescriptors(1),
+//                  bDescriptorType2(1), wDescriptorLength(2 LE)
+func findHIDReportDescriptorLen(extra *C.uchar, extraLen int) int {
+	data := C.GoBytes(unsafe.Pointer(extra), C.int(extraLen))
+	offset := 0
+	for offset+2 <= len(data) {
+		descLen := int(data[offset])
+		if descLen < 2 {
+			break
+		}
+		if offset+descLen > len(data) {
+			break
+		}
+		descType := data[offset+1]
+		if descType == 0x21 && descLen >= 9 {
+			return int(data[offset+7]) | (int(data[offset+8]) << 8)
+		}
+		offset += descLen
 	}
-	// wDescriptorLength 在 offset 7-8 (小端序)
-	return int(extra[7]) | (int(extra[8]) << 8)
+	return 0
 }
 
 func getStringDescriptor(handle *C.libusb_device_handle, index C.uint8_t) string {

@@ -12,7 +12,6 @@ if __name__ == "__main__":
     time.sleep(0.1)
     ser.setDTR(True)
     ser.setRTS(False)
-    time.sleep(0.5) # 等待 ESP32 启动
     def reader():
         while True:
             data = ser.readline()
@@ -23,9 +22,11 @@ if __name__ == "__main__":
     thread = threading.Thread(target=reader)
     thread.start()
     while True:
-        cmd = input("pico>")
-        ser.write((cmd+"\n").encode())
-
+        # PING 帧: [0x55][0xAA][len_lo][len_hi][cmd]
+        # CMD_PING = 0x01, len = 1 (cmd only, no payload)
+        ser.write(b'\x55\xAA\x01\x00\x01')
+        time.sleep(1)
+        print("PING")
 
 
     # if TARGET == SERIAL:

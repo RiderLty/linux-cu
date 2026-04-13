@@ -4,43 +4,38 @@ import (
 	"context"
 	"fmt"
 	"log"
+	"sync"
 	"time"
 
 	"go.bug.st/serial"
 )
 
-// Config 串口参数
-type Config struct {
-	Device string // 例如 "/dev/ttyACM0"
-	Debug  bool   // true=115200, false=4000000
-}
-
-const DefaultBaudRate = 4000000
-
-// Port 帧级别的串口读写
-type Port struct {
-	port    serial.Port
-	encoder Encoder
-	decoder Decoder
-	writeCh chan Frame  // 出站帧队列
-	readCh  chan Frame  // 入站帧队列
-	rawCh   chan []byte // 非帧原始数据（bootloader 日志等）
-	errCh   chan error  // 致命错误
-}
-
 const (
-	writeChanSize = 32
-	readChanSize  = 16
-	rawChanSize   = 16
-	errChanSize   = 4
-	readBufSize   = 256
+	DefaultBaudRate = 4000000
+	DebugBaudRate   = 115200
 )
 
-// Open 打开串口并启动读写 goroutine
+type Config struct {
+	Device string
+	Debug  bool
+}
+
+// Port 封装串口设备，提供帧级别的收发
+type Port struct {
+	port    serial.Port
+	enc     Encoder
+	dec     Decoder
+	recvCh  chan Frame
+	rawCh   chan []byte
+	errCh   chan error
+	closeCh chan struct{}
+	wg      sync.WaitGroup
+}
+
 func Open(ctx context.Context, cfg Config) (*Port, error) {
 	baud := DefaultBaudRate
 	if cfg.Debug {
-		baud = 115200
+		baud = DebugBaudRate
 	}
 
 	mode := &serial.Mode{
@@ -55,114 +50,122 @@ func Open(ctx context.Context, cfg Config) (*Port, error) {
 		return nil, fmt.Errorf("open %s: %w", cfg.Device, err)
 	}
 
+	// DTR/RTS 复位序列：触发 ESP32 重启
+	// DTR 低 + RTS 高 → 拉低 EN → 释放 EN → ESP32 进入 bootloader 或正常启动
+	if err := sp.SetDTR(false); err != nil {
+		log.Printf("[串口] SetDTR(false): %v", err)
+	}
+	if err := sp.SetRTS(true); err != nil {
+		log.Printf("[串口] SetRTS(true): %v", err)
+	}
+	time.Sleep(100 * time.Millisecond)
+	if err := sp.SetDTR(true); err != nil {
+		log.Printf("[串口] SetDTR(true): %v", err)
+	}
+	if err := sp.SetRTS(false); err != nil {
+		log.Printf("[串口] SetRTS(false): %v", err)
+	}
+	log.Printf("[串口] DTR/RTS 复位序列完成")
+	time.Sleep(500 * time.Millisecond) // 等待 ESP32 启动
+	log.Printf("[串口] 等待 ESP32 启动完成")
 	// 设置短读超时，以便 reader goroutine 能检查 ctx.Done()
 	if err := sp.SetReadTimeout(100 * time.Millisecond); err != nil {
 		sp.Close()
 		return nil, fmt.Errorf("set read timeout: %w", err)
 	}
-
+	// 清空缓冲区
+	_ = sp.ResetInputBuffer()
+	_ = sp.ResetOutputBuffer()
 	p := &Port{
 		port:    sp,
-		writeCh: make(chan Frame, writeChanSize),
-		readCh:  make(chan Frame, readChanSize),
-		rawCh:   make(chan []byte, rawChanSize),
-		errCh:   make(chan error, errChanSize),
+		recvCh:  make(chan Frame, 32),
+		rawCh:   make(chan []byte, 32),
+		errCh:   make(chan error, 1),
+		closeCh: make(chan struct{}),
 	}
-
+	p.wg.Add(2)
 	go p.reader(ctx)
 	go p.writer(ctx)
-
+	log.Printf("[串口] 已打开 %s (%d baud)", cfg.Device, baud)
 	return p, nil
 }
 
-// SendFrame 入队一帧等待发送（非阻塞）
-func (p *Port) SendFrame(f Frame) {
-	p.writeCh <- f
+func (p *Port) Close() {
+	close(p.closeCh)
+	p.port.Close()
+	p.wg.Wait()
 }
 
-// RecvChan 返回收到帧的 channel
+// RecvChan 返回接收到的帧
 func (p *Port) RecvChan() <-chan Frame {
-	return p.readCh
+	return p.recvCh
 }
 
-// RawChan 返回非帧原始数据的 channel（bootloader 日志等）
+// RawChan 返回非帧原始数据
 func (p *Port) RawChan() <-chan []byte {
 	return p.rawCh
 }
 
-// ErrChan 返回致命错误的 channel
+// ErrChan 返回错误
 func (p *Port) ErrChan() <-chan error {
 	return p.errCh
 }
 
-// Close 关闭串口
-func (p *Port) Close() error {
-	return p.port.Close()
+// SendFrame 发送帧
+func (p *Port) SendFrame(f Frame) {
+	data := p.enc.Encode(f.Cmd, f.Payload)
+	_, err := p.port.Write(data)
+	if err != nil {
+		log.Printf("[串口] 写入错误: %v", err)
+	}
 }
 
 func (p *Port) reader(ctx context.Context) {
-	buf := make([]byte, readBufSize)
+	defer p.wg.Done()
+	buf := make([]byte, 4096)
+
 	for {
 		select {
 		case <-ctx.Done():
+			return
+		case <-p.closeCh:
 			return
 		default:
 		}
 
 		n, err := p.port.Read(buf)
-		log.Printf("Read %d bytes", n)
 		if err != nil {
 			select {
-			case <-ctx.Done():
-				return
+			case p.errCh <- fmt.Errorf("read: %w", err):
 			default:
-				p.errCh <- fmt.Errorf("serial read: %w", err)
-				return
 			}
+			return
 		}
-		if n == 0 {
-			continue // 读超时，循环检查 ctx
-		}
-		log.Printf("Received %d bytes", n)
-		log.Printf("Received data: %x", buf[:n])
-		frames, raw, err := p.decoder.Feed(buf[:n])
-		if err != nil {
-			// CRC 错误等，解码器已自动重置状态，继续处理
-		}
-		for _, f := range frames {
-			select {
-			case p.readCh <- f:
-			case <-ctx.Done():
-				return
+
+		if n > 0 {
+			frames, raw, err := p.dec.Feed(buf[:n])
+			if err != nil {
+				log.Printf("[串口] 解码错误: %v", err)
+				continue
 			}
-		}
-		if len(raw) > 0 {
-			select {
-			case p.rawCh <- raw:
-			default:
-				// rawCh 满了，丢弃
+			for _, f := range frames {
+				select {
+				case p.recvCh <- f:
+				default:
+					log.Printf("[串口] 接收队列满，丢弃帧 cmd=0x%02X", f.Cmd)
+				}
+			}
+			if len(raw) > 0 {
+				select {
+				case p.rawCh <- raw:
+				default:
+				}
 			}
 		}
 	}
 }
 
 func (p *Port) writer(ctx context.Context) {
-	for {
-		select {
-		case <-ctx.Done():
-			return
-		case f := <-p.writeCh:
-			encoded := p.encoder.Encode(f.Cmd, f.Payload)
-			_, err := p.port.Write(encoded)
-			if err != nil {
-				select {
-				case <-ctx.Done():
-					return
-				default:
-					p.errCh <- fmt.Errorf("serial write: %w", err)
-					return
-				}
-			}
-		}
-	}
+	defer p.wg.Done()
+	<-ctx.Done()
 }

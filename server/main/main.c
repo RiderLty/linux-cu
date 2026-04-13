@@ -157,9 +157,24 @@ static void ctrl_req_handler(const ctrl_request_t *req, void *ctx) {
 
 /* ---- 命令处理 ---- */
 
+// static uint8_t s_ping_count = 0;
 static void handle_ping(void) {
     /* 返回 PONG + magic number */
     serial_send_frame(CMD_PONG, (const uint8_t *)FW_MAGIC, strlen(FW_MAGIC));
+    // s_ping_count++;
+    // switch (s_ping_count % 3) {
+    //     case 0:
+    //         setLED(255, 0, 0, LED_MASK_R | LED_MASK_G | LED_MASK_B);
+    //         break;
+    //     case 1:
+    //         setLED(0, 255, 0, LED_MASK_R | LED_MASK_G | LED_MASK_B);
+    //         break;
+    //     case 2:
+    //         setLED(0, 0, 255, LED_MASK_R | LED_MASK_G | LED_MASK_B);
+    //         break;
+    //     default:
+    //         break;
+    // }
     if (s_state == STATE_IDLE) {
         s_state = STATE_CONNECTED;
         setLED(255, 255, 0, LED_MASK_R | LED_MASK_G);
@@ -307,12 +322,8 @@ void app_main(void) {
     /* 禁用系统日志 */
     esp_log_level_set("*", ESP_LOG_NONE);
 
-    /* 初始化通信 (照抄 example.c:27 + 4M 波特率) */
-    serial_config_t serial_cfg = {
-        .tx_buffer_size = SERIAL_TX_BUF_SIZE,
-        .rx_buffer_size = SERIAL_RX_BUF_SIZE,
-    };
-    serial_init(&serial_cfg);
+    /* 初始化通信 (USB-SERIAL-JTAG 直接读写) */
+    serial_init();
 
     /* 初始化 NVS */
     esp_err_t ret = nvs_flash_init();

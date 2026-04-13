@@ -57,6 +57,17 @@ func OpenDevice(bus, devAddr int) (*DeviceHandle, error) {
 	return &DeviceHandle{ctx: ctx, handle: handle}, nil
 }
 
+// DetachKernelDriver 如果内核驱动已占用接口，先将其 detach
+func (d *DeviceHandle) DetachKernelDriver(iface uint8) error {
+	if C.libusb_kernel_driver_active(d.handle, C.int(iface)) == 1 {
+		rc := C.libusb_detach_kernel_driver(d.handle, C.int(iface))
+		if rc != 0 {
+			return fmt.Errorf("detach kernel driver iface %d: %s", iface, libusbErrStr(rc))
+		}
+	}
+	return nil
+}
+
 // ClaimInterface 声明 USB 接口
 func (d *DeviceHandle) ClaimInterface(iface uint8) error {
 	rc := C.libusb_claim_interface(d.handle, C.int(iface))
@@ -94,6 +105,28 @@ func (d *DeviceHandle) InterruptRead(endpoint uint8, length int, timeoutMs int) 
 		return nil, fmt.Errorf("interrupt transfer ep 0x%02X: %s", endpoint, libusbErrStr(rc))
 	}
 	return buf[:int(transferred)], nil
+}
+
+// InterruptWrite 执行中断 OUT 传输
+func (d *DeviceHandle) InterruptWrite(endpoint uint8, data []byte, timeoutMs int) error {
+	var buf *C.uchar
+	length := len(data)
+	if length > 0 {
+		buf = (*C.uchar)(unsafe.Pointer(&data[0]))
+	}
+	var transferred C.int
+	rc := C.libusb_interrupt_transfer(
+		d.handle,
+		C.uchar(endpoint), // endpoint address includes direction bit (0x00-0x7F for OUT)
+		buf,
+		C.int(length),
+		&transferred,
+		C.uint(timeoutMs),
+	)
+	if rc < 0 {
+		return fmt.Errorf("interrupt write ep 0x%02X: %s", endpoint, libusbErrStr(rc))
+	}
+	return nil
 }
 
 // Close 关闭设备并释放 libusb 上下文
