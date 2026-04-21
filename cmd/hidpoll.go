@@ -1,0 +1,87 @@
+package main
+
+import (
+	"context"
+	"log"
+
+	"github.com/linux-cu/pkg/pipe"
+	"github.com/linux-cu/pkg/usb"
+)
+
+type hidEndpoint struct {
+	InterfaceNumber uint8
+	EndpointAddress uint8
+	MaxPacketSize   uint16
+}
+
+func openRealDevice(busNum, devAddr int, configs []usb.ConfigDescriptor) (*usb.DeviceHandle, []hidEndpoint, error) {
+	devHandle, err := usb.OpenDevice(busNum, devAddr)
+	if err != nil {
+		return nil, nil, err
+	}
+
+	var hidEPs []hidEndpoint
+	if len(configs) > 0 {
+		for _, iface := range configs[0].Interfaces {
+			if iface.InterfaceClass != 0x03 {
+				continue
+			}
+			_ = devHandle.DetachKernelDriver(iface.InterfaceNumber)
+			if err := devHandle.ClaimInterface(iface.InterfaceNumber); err != nil {
+				log.Printf("[HID] 声明接口 %d 失败: %v", iface.InterfaceNumber, err)
+				continue
+			}
+			for _, ep := range iface.Endpoints {
+				if ep.EndpointAddress&0x80 != 0 && (ep.Attributes&0x03) == 0x03 {
+					hidEPs = append(hidEPs, hidEndpoint{
+						InterfaceNumber: iface.InterfaceNumber,
+						EndpointAddress: ep.EndpointAddress,
+						MaxPacketSize:   ep.MaxPacketSize,
+					})
+				}
+			}
+		}
+	}
+	log.Printf("[HID] 已打开真实设备，%d 个中断 IN 端点", len(hidEPs))
+	return devHandle, hidEPs, nil
+}
+
+func startHIDPolling(ctx context.Context, dev *usb.DeviceHandle, eps []hidEndpoint, p *pipe.Pipe, debug bool) {
+	for _, ep := range eps {
+		go pollEndpoint(ctx, dev, ep, p, debug)
+	}
+}
+
+func pollEndpoint(ctx context.Context, dev *usb.DeviceHandle, ep hidEndpoint, p *pipe.Pipe, debug bool) {
+	pktSize := int(ep.MaxPacketSize)
+	if pktSize < 8 {
+		pktSize = 8
+	}
+	if pktSize > 255 {
+		pktSize = 255
+	}
+	log.Printf("[HID] 轮询接口 %d 端点 0x%02X", ep.InterfaceNumber, ep.EndpointAddress)
+
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		default:
+		}
+		data, err := dev.InterruptRead(ep.EndpointAddress, pktSize, 100)
+		if err != nil {
+			log.Printf("[HID] 读取错误: %v", err)
+			return
+		}
+		if len(data) == 0 {
+			continue
+		}
+		if debug {
+			log.Printf("[DEBUG][HID→Pipe] iface=%d ep=0x%02X len=%d data=%x", ep.InterfaceNumber, ep.EndpointAddress, len(data), data)
+		}
+		msg := pipe.DataMsg(pipe.DeviceToHost, ep.EndpointAddress, ep.InterfaceNumber, data)
+		if err := p.SendDeviceToHost(ctx, msg); err != nil {
+			return
+		}
+	}
+}
