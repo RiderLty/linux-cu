@@ -8,23 +8,7 @@ import (
 	"github.com/linux-cu/pkg/usb"
 )
 
-func runSave(busNum, devAddr int, vidHex, pidHex, outFile string) error {
-	if vidHex != "" && pidHex != "" {
-		vid, pid, err := parseVIDPID(vidHex, pidHex)
-		if err != nil {
-			return err
-		}
-		bus, dev, err := usbFindDevice(vid, pid)
-		if err != nil {
-			return fmt.Errorf("查找设备 VID:PID=%s:%s: %w", vidHex, pidHex, err)
-		}
-		busNum = bus
-		devAddr = dev
-	}
-	if busNum == 0 || devAddr == 0 {
-		return fmt.Errorf("必须指定 --bus 和 --dev 或 --vid 和 --pid")
-	}
-
+func runSave(busNum, devAddr int, outFile string) error {
 	log.Printf("[描述符] 读取设备 %d:%d ...", busNum, devAddr)
 	configs, devDesc, err := usb.ReadDescriptors(busNum, devAddr)
 	if err != nil {

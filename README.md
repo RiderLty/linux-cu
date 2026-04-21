@@ -49,32 +49,32 @@ go build -o linux-cu ./cmd/
 sudo ./linux-cu list
 
 # 模拟指定设备 (bus:dev)
-sudo ./linux-cu emulate --bus 2 --dev 32
+sudo ./linux-cu emulate 2:32
 
-# 模拟指定设备 (VID:PID)
-sudo ./linux-cu emulate --vid 046d --pid c08b
+# 模拟指定设备 (VID:PID，选取第一个匹配)
+sudo ./linux-cu emulate 046d:c08b
 
-# 启用调试模式，显示所有交互数据
-sudo ./linux-cu emulate --bus 2 --dev 32 --debug
+# 启用调试模式
+sudo ./linux-cu emulate 2:32 --debug
 
 # 启用 UDS 事件注入 (文件套接字)
-sudo ./linux-cu emulate --bus 2 --dev 32 --uds /tmp/hid.sock
+sudo ./linux-cu emulate 2:32 --uds /tmp/hid.sock
 
 # 启用 UDS 事件注入 (抽象套接字，@ 前缀)
-sudo ./linux-cu emulate --bus 2 --dev 32 --uds @hid
+sudo ./linux-cu emulate 054c:0ce6 --uds @hid
 
 # 启用 UDP 事件注入 (监听所有 IP 的 9090 端口)
-sudo ./linux-cu emulate --bus 2 --dev 32 --udp :9090
+sudo ./linux-cu emulate 2:32 --udp :9090
 
 # 启用 UDP 事件注入 (仅监听 127.0.0.1:9090)
-sudo ./linux-cu emulate --bus 2 --dev 32 --udp 127.0.0.1:9090
+sudo ./linux-cu emulate 046d:c08b --udp 127.0.0.1:9090
 
 # 同时启用 UDS + UDP + 调试
-sudo ./linux-cu emulate --bus 2 --dev 32 --uds @hid --udp :9090 --debug
+sudo ./linux-cu emulate 2:32 --uds @hid --udp :9090 --debug
 
 # 保存设备信息到 YAML 文件
-sudo ./linux-cu save --bus 2 --dev 32
-sudo ./linux-cu save --vid 046d --pid c08b -o my_mouse.yaml
+sudo ./linux-cu save 2:32
+sudo ./linux-cu save 046d:c08b -o my_mouse.yaml
 
 # 从 YAML 文件创建 Gadget 设备 (仅 IPC 注入，无真实设备透传)
 sudo ./linux-cu load my_mouse.yaml --udp :9999 --debug

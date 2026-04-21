@@ -1,0 +1,66 @@
+device:
+    bcdUSB: "0x0200"
+    bDeviceClass: 0
+    bDeviceSubClass: 0
+    bDeviceProtocol: 0
+    bMaxPacketSize0: 64
+    idVendor: "0x0c45"
+    idProduct: "0x8046"
+    bcdDevice: "0x0130"
+    manufacturer: KEYBOARD
+    product: AJAZZ AK029
+configs:
+    - bConfigurationValue: 1
+      MaxPower: 250
+      selfPowered: false
+      remoteWakeup: true
+      bNumInterfaces: 4
+      interfaces:
+        - bInterfaceNumber: 0
+          bAlternateSetting: 0
+          bInterfaceClass: 3
+          bInterfaceSubClass: 1
+          bInterfaceProtocol: 1
+          endpoints:
+            - bEndpointAddress: 129
+              bmAttributes: 3
+              wMaxPacketSize: 64
+              bInterval: 1
+          reportDescriptor: 05010906a101050719e029e71500250175019508810295017508810195057501050819012905910295017503910195067508150026ff00050719002aff008100c0
+        - bInterfaceNumber: 1
+          bAlternateSetting: 0
+          bInterfaceClass: 3
+          bInterfaceSubClass: 0
+          bInterfaceProtocol: 0
+          endpoints:
+            - bEndpointAddress: 130
+              bmAttributes: 3
+              wMaxPacketSize: 64
+              bInterval: 1
+          reportDescriptor: 050c0901a101850319002a3c031500263c03950175108100c005010980a101850205011981298315002501950375018102950175058101c005010906a101850105071500250119002977957875018102c005010902a10185060901a1000509190129031500250195057501810295017503810105010930093109381581257f750895038106c0c0
+        - bInterfaceNumber: 2
+          bAlternateSetting: 0
+          bInterfaceClass: 3
+          bInterfaceSubClass: 0
+          bInterfaceProtocol: 0
+          endpoints:
+            - bEndpointAddress: 131
+              bmAttributes: 3
+              wMaxPacketSize: 64
+              bInterval: 1
+            - bEndpointAddress: 4
+              bmAttributes: 3
+              wMaxPacketSize: 64
+              bInterval: 1
+          reportDescriptor: 0668ff0961a1010962150026ff009540750881020963150026ff00954075089102c0
+        - bInterfaceNumber: 3
+          bAlternateSetting: 0
+          bInterfaceClass: 3
+          bInterfaceSubClass: 0
+          bInterfaceProtocol: 0
+          endpoints:
+            - bEndpointAddress: 5
+              bmAttributes: 3
+              wMaxPacketSize: 64
+              bInterval: 4
+          reportDescriptor: 0667ff0961a1010962150026ff0095407508b1020963150026ff0096001075089102c0

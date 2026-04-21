@@ -3,6 +3,8 @@ package main
 import (
 	"fmt"
 	"os"
+	"strconv"
+	"strings"
 
 	"github.com/spf13/cobra"
 )
@@ -37,68 +39,74 @@ func listCmd() *cobra.Command {
 }
 
 func emulateCmd() *cobra.Command {
-	var busNum int
-	var devAddr int
-	var vidHex string
-	var pidHex string
 	var udsAddr string
 	var udpAddr string
 
 	cmd := &cobra.Command{
-		Use:   "emulate",
+		Use:   "emulate <device>",
 		Short: "模拟指定 USB 设备 (通过 Gadget HID)",
+		Args:  cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			debug, _ := cmd.Flags().GetBool("debug")
-			return runEmulateRoot(busNum, devAddr, vidHex, pidHex, debug, udsAddr, udpAddr)
+			busNum, devAddr, err := resolveDevice(args[0])
+			if err != nil {
+				return err
+			}
+			return runEmulate(busNum, devAddr, debug, udsAddr, udpAddr)
 		},
 	}
-	cmd.Flags().IntVar(&busNum, "bus", 0, "USB 总线号")
-	cmd.Flags().IntVar(&devAddr, "dev", 0, "USB 设备地址")
-	cmd.Flags().StringVar(&vidHex, "vid", "", "Vendor ID (hex, e.g. 046d)")
-	cmd.Flags().StringVar(&pidHex, "pid", "", "Product ID (hex, e.g. c08b)")
 	cmd.Flags().Bool("debug", false, "显示真实设备与虚拟设备之间的所有交互数据")
 	cmd.Flags().StringVar(&udsAddr, "uds", "", "Unix Domain Socket 地址，接收外部事件注入 (如 /tmp/hid.sock; @前缀表示抽象套接字如 @hid)")
 	cmd.Flags().StringVar(&udpAddr, "udp", "", "UDP 地址，接收外部事件注入 (如 :9090 监听所有IP; 127.0.0.1:9090 监听指定IP)")
 	return cmd
 }
 
-func runEmulateRoot(busNum int, devAddr int, vidHex, pidHex string, debug bool, udsAddr, udpAddr string) error {
-	if vidHex != "" && pidHex != "" {
-		vid, pid, err := parseVIDPID(vidHex, pidHex)
-		if err != nil {
-			return err
-		}
-		bus, dev, err := usbFindDevice(vid, pid)
-		if err != nil {
-			return fmt.Errorf("查找设备 VID:PID=%s:%s: %w", vidHex, pidHex, err)
-		}
-		busNum = bus
-		devAddr = dev
+// resolveDevice parses a device specifier and returns (busNum, devAddr).
+// Accepts formats:
+//   - "2:3"    -> bus:dev (decimal)
+//   - "054c:0ce6" -> VID:PID (hex, selects first match)
+func resolveDevice(spec string) (int, int, error) {
+	parts := strings.SplitN(spec, ":", 2)
+	if len(parts) != 2 {
+		return 0, 0, fmt.Errorf("无效设备标识 %q，格式为 bus:dev 或 vid:pid", spec)
 	}
-	if busNum == 0 || devAddr == 0 {
-		return fmt.Errorf("必须指定 --bus 和 --dev 或 --vid 和 --pid")
+
+	// Try bus:dev first (both parts are decimal integers)
+	bus, busErr := strconv.Atoi(parts[0])
+	dev, devErr := strconv.Atoi(parts[1])
+	if busErr == nil && devErr == nil && bus > 0 && dev > 0 {
+		return bus, dev, nil
 	}
-	return runEmulate(busNum, devAddr, debug, udsAddr, udpAddr)
+
+	// Try VID:PID (hex)
+	vid, vidErr := strconv.ParseUint(parts[0], 16, 16)
+	pid, pidErr := strconv.ParseUint(parts[1], 16, 16)
+	if vidErr == nil && pidErr == nil {
+		b, d, err := usbFindDevice(uint16(vid), uint16(pid))
+		if err != nil {
+			return 0, 0, fmt.Errorf("查找设备 VID:PID=%s: %w", spec, err)
+		}
+		return b, d, nil
+	}
+
+	return 0, 0, fmt.Errorf("无法解析设备标识 %q (非 bus:dev 也非 vid:pid)", spec)
 }
 
 func saveCmd() *cobra.Command {
-	var busNum int
-	var devAddr int
-	var vidHex string
-	var pidHex string
 	var outFile string
 
 	cmd := &cobra.Command{
-		Use:   "save",
+		Use:   "save <device>",
 		Short: "保存指定 USB 设备信息为 YAML 文件",
+		Args:  cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			return runSave(busNum, devAddr, vidHex, pidHex, outFile)
+			busNum, devAddr, err := resolveDevice(args[0])
+			if err != nil {
+				return err
+			}
+			return runSave(busNum, devAddr, outFile)
 		},
 	}
-	cmd.Flags().IntVar(&busNum, "bus", 0, "USB 总线号")
-	cmd.Flags().IntVar(&devAddr, "dev", 0, "USB 设备地址")
-	cmd.Flags().StringVar(&vidHex, "vid", "", "Vendor ID (hex, e.g. 046d)")
-	cmd.Flags().StringVar(&pidHex, "pid", "", "Product ID (hex, e.g. c08b)")
 	cmd.Flags().StringVarP(&outFile, "output", "o", "", "输出 YAML 文件路径 (默认: <vid_pid>.yaml)")
 	return cmd
 }
