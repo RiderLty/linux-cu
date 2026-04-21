@@ -35,7 +35,8 @@ func startGadgetIO(ctx context.Context, g *gadget.Gadget, p *pipe.Pipe, busNum, 
 	}()
 
 	// Writer: pipe DeviceToHost -> /dev/hidgN write
-	// HID interfaces are added in order (0,1,2,...), so hidIdx = msg.Interface
+	// Use IfaceToHidIdx to translate original interface number to HID function index
+	ifaceMap := g.IfaceToHidIdx
 	go func() {
 		for {
 			msg, err := p.RecvDeviceToHost(ctx)
@@ -44,13 +45,13 @@ func startGadgetIO(ctx context.Context, g *gadget.Gadget, p *pipe.Pipe, busNum, 
 			}
 			switch msg.Type {
 			case pipe.MsgData:
-				hidIdx := msg.Interface
-				if int(hidIdx) >= len(hidFiles) || hidFiles[hidIdx] == nil {
-					log.Printf("[Gadget] 无 hidg 设备对应接口 %d (共 %d 个)", hidIdx, len(hidFiles))
+				hidIdx, ok := ifaceMap[msg.Interface]
+				if !ok || hidIdx >= len(hidFiles) || hidFiles[hidIdx] == nil {
+					log.Printf("[Gadget] 无 hidg 设备对应接口 %d (映射=%v, 共 %d 个)", msg.Interface, ifaceMap, len(hidFiles))
 					continue
 				}
 				if debug {
-					log.Printf("[DEBUG][Pipe→HIDG] iface=%d hidg%d len=%d data=%x", hidIdx, hidIdx, len(msg.Data), msg.Data)
+					log.Printf("[DEBUG][Pipe→HIDG] iface=%d hidg%d len=%d data=%x", msg.Interface, hidIdx, len(msg.Data), msg.Data)
 				}
 				if _, err := hidFiles[hidIdx].Write(msg.Data); err != nil {
 					log.Printf("[Gadget] 写入 %s 失败: %v", hidFuncs[hidIdx].DevPath, err)
@@ -62,11 +63,17 @@ func startGadgetIO(ctx context.Context, g *gadget.Gadget, p *pipe.Pipe, busNum, 
 	}()
 
 	// Reader: /dev/hidgN read -> pipe HostToDevice (for OUT data from host)
+	// Build reverse map: hidIdx -> original InterfaceNumber
+	hidIdxToIface := make(map[int]uint8)
+	for ifaceNum, idx := range ifaceMap {
+		hidIdxToIface[idx] = ifaceNum
+	}
 	for i, f := range hidFiles {
 		if f == nil {
 			continue
 		}
-		go readHIDDevice(ctx, f, uint8(i), p, debug)
+		ifaceNum := hidIdxToIface[i] // 0 if not found (acceptable default)
+		go readHIDDevice(ctx, f, ifaceNum, p, debug)
 	}
 }
 

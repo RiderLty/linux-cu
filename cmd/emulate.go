@@ -90,10 +90,15 @@ func runEmulate(busNum, devAddr int, debug bool) error {
 		return fmt.Errorf("设备无配置描述符")
 	}
 	cfg := configs[0]
+
+	// Track which HID interfaces exist and their report lengths
 	hidIdx := 0
 	for _, iface := range cfg.Interfaces {
 		if iface.InterfaceClass != 0x03 {
 			continue
+		}
+		if iface.AlternateSetting != 0 {
+			continue // only create function for alt setting 0
 		}
 		instance := fmt.Sprintf("usb%d", hidIdx)
 		reportLen := uint16(64) // default
@@ -112,9 +117,9 @@ func runEmulate(busNum, devAddr int, debug bool) error {
 			ReportLen:  reportLen,
 			ReportDesc: iface.ReportDescriptor,
 		}
-		log.Printf("[Gadget] 添加 HID 功能 %s (protocol=%d, subclass=%d, report_len=%d, report_desc=%d bytes)",
-			instance, hidCfg.Protocol, hidCfg.SubClass, hidCfg.ReportLen, len(hidCfg.ReportDesc))
-		if err := g.AddHIDFunction(hidCfg); err != nil {
+		log.Printf("[Gadget] 添加 HID 功能 %s (iface=%d, protocol=%d, subclass=%d, report_len=%d, report_desc=%d bytes)",
+			instance, iface.InterfaceNumber, hidCfg.Protocol, hidCfg.SubClass, hidCfg.ReportLen, len(hidCfg.ReportDesc))
+		if err := g.AddHIDFunction(iface.InterfaceNumber, hidCfg); err != nil {
 			return fmt.Errorf("添加 HID 功能: %w", err)
 		}
 		hidIdx++
@@ -136,6 +141,7 @@ func runEmulate(busNum, devAddr int, debug bool) error {
 		defer devHandle.Close()
 		startHIDPolling(pipeCtx, devHandle, hidEPs, p, debug)
 	}
+	_ = hidEPs
 
 	startGadgetIO(pipeCtx, g, p, busNum, devAddr, debug)
 

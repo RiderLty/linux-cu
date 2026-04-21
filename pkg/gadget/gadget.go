@@ -15,12 +15,13 @@ const (
 
 // Gadget represents a USB gadget device managed via ConfigFS
 type Gadget struct {
-	Name       string
-	Path       string
-	VID        uint16
-	PID        uint16
-	UDC        string
-	hidFuncs   []*HIDFunction
+	Name         string
+	Path         string
+	VID          uint16
+	PID          uint16
+	UDC          string
+	hidFuncs     []*HIDFunction
+	IfaceToHidIdx map[uint8]int // maps original InterfaceNumber -> HID function index
 }
 
 // Config holds parameters for creating a gadget
@@ -139,7 +140,8 @@ func Create(cfg Config) (*Gadget, error) {
 
 // AddHIDFunction creates a HID function and links it into the configuration.
 // Each HID interface from the source device should be added as a separate HID function.
-func (g *Gadget) AddHIDFunction(cfg HIDConfig) error {
+// ifaceNum is the original USB interface number from the source device.
+func (g *Gadget) AddHIDFunction(ifaceNum uint8, cfg HIDConfig) error {
 	hid, err := NewHIDFunction(g.Path, cfg)
 	if err != nil {
 		return fmt.Errorf("create hid function: %w", err)
@@ -156,8 +158,12 @@ func (g *Gadget) AddHIDFunction(cfg HIDConfig) error {
 	// Assign hidg index based on creation order
 	hid.Index = len(g.hidFuncs)
 	hid.DevPath = fmt.Sprintf("/dev/hidg%d", hid.Index)
-	log.Printf("[Gadget] %s -> %s", hid.Name, hid.DevPath)
+	log.Printf("[Gadget] %s -> %s (iface %d -> hidIdx %d)", hid.Name, hid.DevPath, ifaceNum, hid.Index)
 
+	if g.IfaceToHidIdx == nil {
+		g.IfaceToHidIdx = make(map[uint8]int)
+	}
+	g.IfaceToHidIdx[ifaceNum] = hid.Index
 	g.hidFuncs = append(g.hidFuncs, hid)
 	return nil
 }
