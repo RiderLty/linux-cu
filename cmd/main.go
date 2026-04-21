@@ -10,10 +10,12 @@ import (
 func main() {
 	rootCmd := &cobra.Command{
 		Use:   "linux-cu",
-		Short: "USB HID 透传模拟工具 (Linux Gadget FunctionFS)",
+		Short: "USB HID 透传模拟工具 (Linux Gadget usb_f_hid)",
 	}
 	rootCmd.AddCommand(listCmd())
 	rootCmd.AddCommand(emulateCmd())
+	rootCmd.AddCommand(saveCmd())
+	rootCmd.AddCommand(loadCmd())
 	if err := rootCmd.Execute(); err != nil {
 		os.Exit(1)
 	}
@@ -77,4 +79,45 @@ func runEmulateRoot(busNum int, devAddr int, vidHex, pidHex string, debug bool, 
 		return fmt.Errorf("必须指定 --bus 和 --dev 或 --vid 和 --pid")
 	}
 	return runEmulate(busNum, devAddr, debug, udsAddr, udpAddr)
+}
+
+func saveCmd() *cobra.Command {
+	var busNum int
+	var devAddr int
+	var vidHex string
+	var pidHex string
+	var outFile string
+
+	cmd := &cobra.Command{
+		Use:   "save",
+		Short: "保存指定 USB 设备信息为 YAML 文件",
+		RunE: func(cmd *cobra.Command, args []string) error {
+			return runSave(busNum, devAddr, vidHex, pidHex, outFile)
+		},
+	}
+	cmd.Flags().IntVar(&busNum, "bus", 0, "USB 总线号")
+	cmd.Flags().IntVar(&devAddr, "dev", 0, "USB 设备地址")
+	cmd.Flags().StringVar(&vidHex, "vid", "", "Vendor ID (hex, e.g. 046d)")
+	cmd.Flags().StringVar(&pidHex, "pid", "", "Product ID (hex, e.g. c08b)")
+	cmd.Flags().StringVarP(&outFile, "output", "o", "", "输出 YAML 文件路径 (默认: <vid_pid>.yaml)")
+	return cmd
+}
+
+func loadCmd() *cobra.Command {
+	var udsAddr string
+	var udpAddr string
+
+	cmd := &cobra.Command{
+		Use:   "load <yaml-file>",
+		Short: "从 YAML 文件创建 Gadget 设备并运行",
+		Args:  cobra.ExactArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			debug, _ := cmd.Flags().GetBool("debug")
+			return runLoad(args[0], debug, udsAddr, udpAddr)
+		},
+	}
+	cmd.Flags().Bool("debug", false, "显示真实设备与虚拟设备之间的所有交互数据")
+	cmd.Flags().StringVar(&udsAddr, "uds", "", "Unix Domain Socket 地址，接收外部事件注入 (如 /tmp/hid.sock; @前缀表示抽象套接字如 @hid)")
+	cmd.Flags().StringVar(&udpAddr, "udp", "", "UDP 地址，接收外部事件注入 (如 :9090 监听所有IP; 127.0.0.1:9090 监听指定IP)")
+	return cmd
 }

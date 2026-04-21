@@ -1,0 +1,71 @@
+device:
+    bcdUSB: "0x0200"
+    bDeviceClass: 0
+    bDeviceSubClass: 0
+    bDeviceProtocol: 0
+    bMaxPacketSize0: 64
+    idVendor: "0x054c"
+    idProduct: "0x0ce6"
+    bcdDevice: "0x0100"
+    manufacturer: Sony Interactive Entertainment
+    product: DualSense Wireless Controller
+configs:
+    - bConfigurationValue: 1
+      MaxPower: 250
+      selfPowered: true
+      remoteWakeup: false
+      bNumInterfaces: 4
+      interfaces:
+        - bInterfaceNumber: 0
+          bAlternateSetting: 0
+          bInterfaceClass: 1
+          bInterfaceSubClass: 1
+          bInterfaceProtocol: 0
+          endpoints: []
+        - bInterfaceNumber: 1
+          bAlternateSetting: 0
+          bInterfaceClass: 1
+          bInterfaceSubClass: 2
+          bInterfaceProtocol: 0
+          endpoints: []
+        - bInterfaceNumber: 1
+          bAlternateSetting: 1
+          bInterfaceClass: 1
+          bInterfaceSubClass: 2
+          bInterfaceProtocol: 0
+          endpoints:
+            - bEndpointAddress: 1
+              bmAttributes: 9
+              wMaxPacketSize: 392
+              bInterval: 4
+        - bInterfaceNumber: 2
+          bAlternateSetting: 0
+          bInterfaceClass: 1
+          bInterfaceSubClass: 2
+          bInterfaceProtocol: 0
+          endpoints: []
+        - bInterfaceNumber: 2
+          bAlternateSetting: 1
+          bInterfaceClass: 1
+          bInterfaceSubClass: 2
+          bInterfaceProtocol: 0
+          endpoints:
+            - bEndpointAddress: 130
+              bmAttributes: 5
+              wMaxPacketSize: 196
+              bInterval: 4
+        - bInterfaceNumber: 3
+          bAlternateSetting: 0
+          bInterfaceClass: 3
+          bInterfaceSubClass: 0
+          bInterfaceProtocol: 0
+          endpoints:
+            - bEndpointAddress: 132
+              bmAttributes: 3
+              wMaxPacketSize: 64
+              bInterval: 6
+            - bEndpointAddress: 3
+              bmAttributes: 3
+              wMaxPacketSize: 64
+              bInterval: 6
+          reportDescriptor: 05010905a1018501093009310932093509330934150026ff007508950681020600ff09209501810205010939150025073500463b016514750495018142650005091901290f150025017501950f81020600ff0921950d81020600ff0922150026ff0075089534810285020923952f9102850509339528b10285080934952fb102850909249513b102850a0925951ab102850b09419529b102850c09429529b10285200926953fb102852109279504b10285220940953fb10285800928953fb10285810929953fb1028582092a9509b1028583092b953fb1028584092c953fb1028585092d9502b10285a0092e9501b10285e0092f953fb10285f00930953fb10285f10931953fb10285f20932950fb10285f40935953fb10285f509369503b102c0

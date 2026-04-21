@@ -71,6 +71,14 @@ sudo ./linux-cu emulate --bus 2 --dev 32 --udp 127.0.0.1:9090
 
 # 同时启用 UDS + UDP + 调试
 sudo ./linux-cu emulate --bus 2 --dev 32 --uds @hid --udp :9090 --debug
+
+# 保存设备信息到 YAML 文件
+sudo ./linux-cu save --bus 2 --dev 32
+sudo ./linux-cu save --vid 046d --pid c08b -o my_mouse.yaml
+
+# 从 YAML 文件创建 Gadget 设备 (仅 IPC 注入，无真实设备透传)
+sudo ./linux-cu load my_mouse.yaml --udp :9999 --debug
+sudo ./linux-cu load 046d_c08b.yaml --uds @hid
 ```
 
 > 需要 root 权限操作 ConfigFS 和 /dev/hidgN 设备。程序退出时自动销毁 Gadget 设备。
@@ -79,8 +87,10 @@ sudo ./linux-cu emulate --bus 2 --dev 32 --uds @hid --udp :9090 --debug
 
 ```
 cmd/
-├── main.go              # CLI 入口，list / emulate 子命令
+├── main.go              # CLI 入口，list / emulate / save / load 子命令
 ├── emulate.go           # emulate 主逻辑
+├── save.go              # save 保存设备信息
+├── load.go              # load 从文件创建 Gadget
 ├── gadgetio.go          # Gadget /dev/hidgN 读写
 ├── hidpoll.go           # 真实设备 HID 轮询与 OUT 转发
 └── ipc.go               # UDS/UDP 事件注入
@@ -90,6 +100,8 @@ pkg/
 │   └── hid.go            # usb_f_hid HID 功能创建与 /dev/hidgN IO
 ├── pipe/
 │   └── pipe.go           # 统一双向管道，事件与数据传输
+├── profile/
+│   └── profile.go       # 设备信息 YAML 序列化/反序列化
 └── usb/
     ├── descriptor.go     # cgo libusb 绑定，描述符读取
     ├── device.go         # USB 设备句柄管理
@@ -100,7 +112,9 @@ pkg/
 ## 工作流程
 
 1. **list**：枚举系统 USB 设备，显示 VID:PID 和设备名称
-2. **emulate**：
+2. **save**：读取指定 USB 设备的完整描述符，保存为 YAML 文件
+3. **load**：从 YAML 文件创建 Gadget 设备（无真实设备透传，仅支持 IPC 注入）
+4. **emulate**：
    - 读取目标设备的完整描述符（设备/配置/接口/端点/HID报告）
    - 检查是否已存在同 VID:PID 的 Gadget 设备，存在则先销毁
    - 通过 ConfigFS 创建 Gadget 设备，配置描述符

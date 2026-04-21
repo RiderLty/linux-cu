@@ -1,0 +1,51 @@
+device:
+    bcdUSB: "0x0200"
+    bDeviceClass: 0
+    bDeviceSubClass: 0
+    bDeviceProtocol: 0
+    bMaxPacketSize0: 64
+    idVendor: "0x046d"
+    idProduct: "0xc547"
+    bcdDevice: "0x0402"
+    manufacturer: Logitech
+    product: USB Receiver
+configs:
+    - bConfigurationValue: 1
+      MaxPower: 49
+      selfPowered: false
+      remoteWakeup: true
+      bNumInterfaces: 3
+      interfaces:
+        - bInterfaceNumber: 0
+          bAlternateSetting: 0
+          bInterfaceClass: 3
+          bInterfaceSubClass: 1
+          bInterfaceProtocol: 2
+          endpoints:
+            - bEndpointAddress: 129
+              bmAttributes: 3
+              wMaxPacketSize: 64
+              bInterval: 1
+          reportDescriptor: 05010902a1010901a100951075011500250105091901291081029502751016018026ff7f0501093009318106950175081581257f093881069501050c0a38028106c00600ff09f175089505150026ff008100c0
+        - bInterfaceNumber: 1
+          bAlternateSetting: 0
+          bInterfaceClass: 3
+          bInterfaceSubClass: 1
+          bInterfaceProtocol: 1
+          endpoints:
+            - bEndpointAddress: 130
+              bmAttributes: 3
+              wMaxPacketSize: 64
+              bInterval: 1
+          reportDescriptor: 05010906a1018501050719e029e7150025017501950881029505050819012905910295017503910395707501050719042973810295051987298b81029503199029928102c0050c0901a101850395027510150126ff0219012aff028100c005010980a101850495017502150125030982098109838100750115002501099b810675058103c0
+        - bInterfaceNumber: 2
+          bAlternateSetting: 0
+          bInterfaceClass: 3
+          bInterfaceSubClass: 0
+          bInterfaceProtocol: 0
+          endpoints:
+            - bEndpointAddress: 131
+              bmAttributes: 3
+              wMaxPacketSize: 64
+              bInterval: 1
+          reportDescriptor: 0600ff0901a101851095067508150026ff000901810009019100c00600ff0902a101851195137508150026ff000902810009029100c0
