@@ -65,24 +65,28 @@ func Create(cfg Config) (*Gadget, error) {
 
 	// Write device descriptors
 	writes := []struct {
-		file string
-		val  string
+		file   string
+		val    string
+		must   bool // if true, error is fatal; if false, warn and continue
 	}{
-		{"idVendor", fmt.Sprintf("0x%04x", cfg.VID)},
-		{"idProduct", fmt.Sprintf("0x%04x", cfg.PID)},
-		{"bcdDevice", fmt.Sprintf("0x%04x", cfg.BcdDevice)},
-		{"bcdUSB", fmt.Sprintf("0x%04x", cfg.BcdUSB)},
-		{"bDeviceClass", fmt.Sprintf("0x%02x", cfg.DeviceClass)},
-		{"bDeviceSubClass", fmt.Sprintf("0x%02x", cfg.DeviceSubClass)},
-		{"bDeviceProtocol", fmt.Sprintf("0x%02x", cfg.DeviceProtocol)},
-		{"bMaxPacketSize0", fmt.Sprintf("%d", cfg.MaxPacketSize0)},
+		{"idVendor", fmt.Sprintf("0x%04x", cfg.VID), true},
+		{"idProduct", fmt.Sprintf("0x%04x", cfg.PID), true},
+		{"bcdDevice", fmt.Sprintf("0x%04x", cfg.BcdDevice), false},
+		{"bcdUSB", fmt.Sprintf("0x%04x", cfg.BcdUSB), true},
+		{"bDeviceClass", fmt.Sprintf("0x%02x", cfg.DeviceClass), true},
+		{"bDeviceSubClass", fmt.Sprintf("0x%02x", cfg.DeviceSubClass), true},
+		{"bDeviceProtocol", fmt.Sprintf("0x%02x", cfg.DeviceProtocol), true},
+		{"bMaxPacketSize0", fmt.Sprintf("%d", cfg.MaxPacketSize0), true},
 	}
 	for _, w := range writes {
 		path := filepath.Join(gPath, w.file)
 		log.Printf("[Gadget] write %s = %s", path, w.val)
 		if err := writeFile(path, w.val); err != nil {
-			g.cleanup()
-			return nil, fmt.Errorf("write %s: %w", w.file, err)
+			if w.must {
+				g.cleanup()
+				return nil, fmt.Errorf("write %s: %w", w.file, err)
+			}
+			log.Printf("[Gadget] 警告: write %s 失败 (非关键): %v", w.file, err)
 		}
 	}
 

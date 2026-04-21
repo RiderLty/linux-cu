@@ -95,6 +95,10 @@ func runEmulate(busNum, devAddr int, debug bool, udsAddr, udpAddr string) error 
 	hidIdx := 0
 	for _, iface := range cfg.Interfaces {
 		if iface.InterfaceClass != 0x03 {
+			if iface.AlternateSetting == 0 {
+				log.Printf("[Gadget] 跳过非 HID 接口 %d (class=0x%02x subclass=0x%02x protocol=0x%02x)",
+					iface.InterfaceNumber, iface.InterfaceClass, iface.InterfaceSubClass, iface.InterfaceProtocol)
+			}
 			continue
 		}
 		if iface.AlternateSetting != 0 {
@@ -123,6 +127,10 @@ func runEmulate(busNum, devAddr int, debug bool, udsAddr, udpAddr string) error 
 			return fmt.Errorf("添加 HID 功能: %w", err)
 		}
 		hidIdx++
+	}
+
+	if hidIdx == 0 {
+		return fmt.Errorf("设备无 HID 接口 (所有接口均为非 HID 类，当前仅支持 HID 类设备透传)")
 	}
 
 	log.Println("[Gadget] 连接 UDC ...")
