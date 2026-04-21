@@ -32,7 +32,7 @@ func usbFindDevice(vid, pid uint16) (int, int, error) {
 	return usb.FindDeviceByVIDPID(vid, pid)
 }
 
-func runEmulate(busNum, devAddr int, debug bool) error {
+func runEmulate(busNum, devAddr int, debug bool, udsAddr, udpAddr string) error {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
@@ -144,6 +144,14 @@ func runEmulate(busNum, devAddr int, debug bool) error {
 	_ = hidEPs
 
 	startGadgetIO(pipeCtx, g, p, busNum, devAddr, debug)
+
+	// Start IPC injection if configured
+	if udsAddr != "" {
+		startIPCInjection(pipeCtx, "uds", udsAddr, p, g.IfaceToHidIdx, debug)
+	}
+	if udpAddr != "" {
+		startIPCInjection(pipeCtx, "udp", udpAddr, p, g.IfaceToHidIdx, debug)
+	}
 
 	log.Println("[主] 进入主循环，Ctrl+C 退出")
 	<-pipeCtx.Done()

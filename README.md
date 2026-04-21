@@ -56,6 +56,21 @@ sudo ./linux-cu emulate --vid 046d --pid c08b
 
 # 启用调试模式，显示所有交互数据
 sudo ./linux-cu emulate --bus 2 --dev 32 --debug
+
+# 启用 UDS 事件注入 (文件套接字)
+sudo ./linux-cu emulate --bus 2 --dev 32 --uds /tmp/hid.sock
+
+# 启用 UDS 事件注入 (抽象套接字，@ 前缀)
+sudo ./linux-cu emulate --bus 2 --dev 32 --uds @hid
+
+# 启用 UDP 事件注入 (监听所有 IP 的 9090 端口)
+sudo ./linux-cu emulate --bus 2 --dev 32 --udp :9090
+
+# 启用 UDP 事件注入 (仅监听 127.0.0.1:9090)
+sudo ./linux-cu emulate --bus 2 --dev 32 --udp 127.0.0.1:9090
+
+# 同时启用 UDS + UDP + 调试
+sudo ./linux-cu emulate --bus 2 --dev 32 --uds @hid --udp :9090 --debug
 ```
 
 > 需要 root 权限操作 ConfigFS 和 /dev/hidgN 设备。程序退出时自动销毁 Gadget 设备。
@@ -64,7 +79,11 @@ sudo ./linux-cu emulate --bus 2 --dev 32 --debug
 
 ```
 cmd/
-└── main.go              # CLI 入口，list / emulate 子命令
+├── main.go              # CLI 入口，list / emulate 子命令
+├── emulate.go           # emulate 主逻辑
+├── gadgetio.go          # Gadget /dev/hidgN 读写
+├── hidpoll.go           # 真实设备 HID 轮询与 OUT 转发
+└── ipc.go               # UDS/UDP 事件注入
 pkg/
 ├── gadget/
 │   ├── gadget.go         # ConfigFS gadget 创建/销毁
@@ -174,4 +193,78 @@ cat /sys/module/usbhid/parameters/mousepoll
 # 使用 evtest 监测实际回报率
 sudo apt install evtest
 sudo evtest /dev/input/eventX
+```
+
+## 外部事件注入 (IPC)
+
+通过 `--uds` 或 `--udp` 参数，可以开启外部事件注入功能，允许外部程序通过网络或 Unix 域套接字向 Gadget 设备注入 HID 数据。
+
+### 参数说明
+
+| 参数 | 格式 | 说明 |
+|---|---|---|
+| `--uds` | `/path/to/socket` | Unix 域套接字文件路径 |
+| `--uds` | `@name` | 抽象套接字（`@` 前缀，无需文件） |
+| `--udp` | `:port` | 监听所有 IP 的指定端口 |
+| `--udp` | `ip:port` | 仅监听指定 IP 的指定端口 |
+
+### 数据包格式
+
+所有注入数据使用以下二进制格式：
+
+```
+Offset  Size  Field            说明
+0       1     Magic            固定值 0xC0
+1       1     Interface Number 目标 USB 接口号 (如 0, 1, 3)
+2       2     Data Length      数据长度 N (大端序)
+4       N     HID Report Data  HID 报告数据
+```
+
+**示例**：向接口 0 注入 4 字节键盘数据 (按键 A)
+
+```
+C0 00 00 04 00 00 04 00
+│  │  │     └───────── HID 报告数据 (4 bytes)
+│  │  └─────────────── 数据长度 = 4 (big-endian)
+│  └────────────────── 接口号 = 0
+└───────────────────── Magic = 0xC0
+```
+
+### 发送示例
+
+**Python (UDP)**:
+
+```python
+import socket
+import struct
+
+def send_hid_report(iface, data, host='127.0.0.1', port=9090):
+    pkt = struct.pack('>B BH', 0xC0, iface, len(data)) + data
+    sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+    sock.sendto(pkt, (host, port))
+
+# 向接口 0 注入键盘按键 A
+send_hid_report(0, bytes([0x00, 0x00, 0x04, 0x00]))
+```
+
+**Python (UDS)**:
+
+```python
+import socket
+import struct
+
+def send_hid_report(iface, data, addr='/tmp/hid.sock'):
+    pkt = struct.pack('>B BH', 0xC0, iface, len(data)) + data
+    sock = socket.socket(socket.AF_UNIX, socket.SOCK_DGRAM)
+    sock.sendto(pkt, addr)
+
+# 使用抽象套接字
+# send_hid_report(0, bytes([0x00, 0x00, 0x04, 0x00]), '\0hid')
+```
+
+**Shell (UDP)**:
+
+```bash
+# 发送原始二进制数据包
+echo -ne '\xc0\x00\x00\x04\x00\x00\x04\x00' | nc -u -q0 127.0.0.1 9090
 ```
