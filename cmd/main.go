@@ -18,6 +18,7 @@ func main() {
 	rootCmd.AddCommand(emulateCmd())
 	rootCmd.AddCommand(saveCmd())
 	rootCmd.AddCommand(loadCmd())
+	rootCmd.AddCommand(sendCmd())
 	if err := rootCmd.Execute(); err != nil {
 		os.Exit(1)
 	}
@@ -114,6 +115,7 @@ func saveCmd() *cobra.Command {
 func loadCmd() *cobra.Command {
 	var udsAddr string
 	var udpAddr string
+	var recvMode bool
 
 	cmd := &cobra.Command{
 		Use:   "load <yaml-file>",
@@ -121,11 +123,33 @@ func loadCmd() *cobra.Command {
 		Args:  cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			debug, _ := cmd.Flags().GetBool("debug")
-			return runLoad(args[0], debug, udsAddr, udpAddr)
+			return runLoad(args[0], debug, udsAddr, udpAddr, recvMode)
 		},
 	}
 	cmd.Flags().Bool("debug", false, "显示真实设备与虚拟设备之间的所有交互数据")
 	cmd.Flags().StringVar(&udsAddr, "uds", "", "Unix Domain Socket 地址，接收外部事件注入 (如 /tmp/hid.sock; @前缀表示抽象套接字如 @hid)")
 	cmd.Flags().StringVar(&udpAddr, "udp", "", "UDP 地址，接收外部事件注入 (如 :9090 监听所有IP; 127.0.0.1:9090 监听指定IP)")
+	cmd.Flags().BoolVar(&recvMode, "recv", false, "双向 IPC 模式：接收注入数据，同时将 HIDG 主机输出回传给最近来源")
+	return cmd
+}
+
+func sendCmd() *cobra.Command {
+	cmd := &cobra.Command{
+		Use:   "send <device> <target>",
+		Short: "发送模式：读取 USB 设备数据发送到网络目标，并接收网络数据写回设备",
+		Long: `发送模式：不创建 Gadget 设备，仅读取指定 USB 设备的数据，
+通过 UDS 或 UDP 发送到指定目标，并接收远端数据写回设备。
+
+设备格式与 emulate 相同：bus:dev 或 VID:PID
+目标格式：UDS:address 或 UDP:address
+  UDS 示例: UDS:@hid  UDS:/tmp/hid.socket
+  UDP 示例: UDP:192.168.3.3:9981  UDP:127.0.0.1:9999`,
+		Args: cobra.ExactArgs(2),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			debug, _ := cmd.Flags().GetBool("debug")
+			return runSend(args[0], args[1], debug)
+		},
+	}
+	cmd.Flags().Bool("debug", false, "显示所有交互数据")
 	return cmd
 }

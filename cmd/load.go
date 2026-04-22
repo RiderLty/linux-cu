@@ -13,7 +13,7 @@ import (
 	"github.com/linux-cu/pkg/profile"
 )
 
-func runLoad(yamlPath string, debug bool, udsAddr, udpAddr string) error {
+func runLoad(yamlPath string, debug bool, udsAddr, udpAddr string, recvMode bool) error {
 	p, err := profile.Load(yamlPath)
 	if err != nil {
 		return err
@@ -73,14 +73,26 @@ func runLoad(yamlPath string, debug bool, udsAddr, udpAddr string) error {
 	startGadgetIO(pipeCtx, g, pipeObj, 0, 0, debug)
 
 	// Start IPC injection if configured
-	if udsAddr != "" {
-		startIPCInjection(pipeCtx, "uds", udsAddr, pipeObj, g.IfaceToHidIdx, debug)
+	if recvMode {
+		// Bidirectional mode: receive injection + echo HostToDevice back to source
+		var target ipcTarget
+		if udsAddr != "" {
+			startIPCBidirectional(pipeCtx, "uds", udsAddr, pipeObj, g.IfaceToHidIdx, &target, debug)
+		}
+		if udpAddr != "" {
+			startIPCBidirectional(pipeCtx, "udp", udpAddr, pipeObj, g.IfaceToHidIdx, &target, debug)
+		}
+		startIPCEcho(pipeCtx, pipeObj, &target, debug)
+		log.Println("[主] 进入主循环，Ctrl+C 退出 (双向 IPC 模式：接收注入 + 回传主机输出)")
+	} else {
+		if udsAddr != "" {
+			startIPCInjection(pipeCtx, "uds", udsAddr, pipeObj, g.IfaceToHidIdx, debug)
+		}
+		if udpAddr != "" {
+			startIPCInjection(pipeCtx, "udp", udpAddr, pipeObj, g.IfaceToHidIdx, debug)
+		}
+		log.Println("[主] 进入主循环，Ctrl+C 退出 (无真实设备透传，仅支持 IPC 注入)")
 	}
-	if udpAddr != "" {
-		startIPCInjection(pipeCtx, "udp", udpAddr, pipeObj, g.IfaceToHidIdx, debug)
-	}
-
-	log.Println("[主] 进入主循环，Ctrl+C 退出 (无真实设备透传，仅支持 IPC 注入)")
 	<-pipeCtx.Done()
 	log.Println("[主] 退出")
 	return nil
