@@ -82,12 +82,18 @@ func runSend(device string, target string, debug bool) error {
 		if err != nil {
 			return fmt.Errorf("解析 UDS 地址: %w", err)
 		}
-		c, err := net.DialUnix("unixgram", nil, uaddr)
+		// Explicit local bind so server can reply (auto-bind yields nil addr in ReadFromUnix)
+		localName := fmt.Sprintf("@linux_cu_send_%d", os.Getpid())
+		localAddr, err := net.ResolveUnixAddr("unixgram", localName)
+		if err != nil {
+			return fmt.Errorf("解析本地 UDS 地址: %w", err)
+		}
+		c, err := net.DialUnix("unixgram", localAddr, uaddr)
 		if err != nil {
 			return fmt.Errorf("连接 UDS %s: %w", addr, err)
 		}
 		conn = c
-		log.Printf("[Send] 已连接 UDS %s", addr)
+		log.Printf("[Send] 已连接 UDS %s (local=%s)", addr, localName)
 	case "udp":
 		raddr, err := net.ResolveUDPAddr("udp", addr)
 		if err != nil {
@@ -168,7 +174,7 @@ func pollAndSend(ctx context.Context, dev *usb.DeviceHandle, ep hidEndpoint, con
 		}
 
 		if debug {
-			log.Printf("[DEBUG][USB→Net] iface=%d ep=0x%02X len=%d data=%x", ep.InterfaceNumber, ep.EndpointAddress, len(data), data)
+			log.Printf("[DEBUG][USB→IPC] iface=%d ep=0x%02X len=%d data=%x", ep.InterfaceNumber, ep.EndpointAddress, len(data), data)
 		}
 
 		pkt := buildInjectPacket(ep.InterfaceNumber, data)
