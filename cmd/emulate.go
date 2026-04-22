@@ -93,11 +93,13 @@ func runEmulate(busNum, devAddr int, debug bool, udsAddr, udpAddr string) error 
 
 	// Track which HID interfaces exist and their report lengths
 	hidIdx := 0
+	var nonHIDIfaceNums []uint8
 	for _, iface := range cfg.Interfaces {
 		if iface.InterfaceClass != 0x03 {
 			if iface.AlternateSetting == 0 {
-				log.Printf("[Gadget] 跳过非 HID 接口 %d (class=0x%02x subclass=0x%02x protocol=0x%02x)",
+				log.Printf("[Gadget] 非 HID 接口 %d (class=0x%02x subclass=0x%02x protocol=0x%02x) -> FFS",
 					iface.InterfaceNumber, iface.InterfaceClass, iface.InterfaceSubClass, iface.InterfaceProtocol)
+				nonHIDIfaceNums = append(nonHIDIfaceNums, iface.InterfaceNumber)
 			}
 			continue
 		}
@@ -129,8 +131,28 @@ func runEmulate(busNum, devAddr int, debug bool, udsAddr, udpAddr string) error 
 		hidIdx++
 	}
 
-	if hidIdx == 0 {
-		return fmt.Errorf("设备无 HID 接口 (所有接口均为非 HID 类，当前仅支持 HID 类设备透传)")
+	// Add FFS function for non-HID interfaces
+	if len(nonHIDIfaceNums) > 0 {
+		ffsName := "ffs.usb0"
+		log.Printf("[Gadget] 添加 FFS 功能 %s (非 HID 接口: %v)", ffsName, nonHIDIfaceNums)
+		ffsFunc, err := g.AddFFSFunction(ffsName, nonHIDIfaceNums)
+		if err != nil {
+			return fmt.Errorf("添加 FFS 功能: %w", err)
+		}
+		_ = ffsFunc // will be used after UDC connect
+	}
+
+	if hidIdx == 0 && len(nonHIDIfaceNums) == 0 {
+		return fmt.Errorf("设备无可用的接口")
+	}
+
+	// Setup FFS (mount + write descriptors) BEFORE connecting UDC.
+	// The kernel requires FFS descriptors to be written before UDC bind.
+	for _, ffsFunc := range g.FFSFunctions() {
+		log.Printf("[FFS] 初始化 FFS %s ...", ffsFunc.Name)
+		if err := setupFFS(ffsFunc, configs, devDesc); err != nil {
+			return fmt.Errorf("初始化 FFS: %w", err)
+		}
 	}
 
 	log.Println("[Gadget] 连接 UDC ...")
@@ -141,6 +163,12 @@ func runEmulate(busNum, devAddr int, debug bool, udsAddr, udpAddr string) error 
 
 	p, pipeCtx := pipe.NewWithContext(ctx, 64)
 	defer p.Close()
+
+	// Start FFS I/O (open endpoints + data flow) AFTER UDC connect.
+	for _, ffsFunc := range g.FFSFunctions() {
+		log.Printf("[FFS] 启动 FFS I/O %s ...", ffsFunc.Name)
+		startFFSIO(pipeCtx, ffsFunc, configs, p, debug)
+	}
 
 	devHandle, hidEPs, err := openRealDevice(busNum, devAddr, configs)
 	if err != nil {

@@ -11,7 +11,8 @@ import (
 type hidEndpoint struct {
 	InterfaceNumber uint8
 	EndpointAddress uint8
-	MaxPacketSize   uint16
+	Attributes    uint8 // bmAttributes (transfer type: 1=isoc, 2=bulk, 3=interrupt)
+	MaxPacketSize uint16
 }
 
 type hidEndpoints struct {
@@ -28,21 +29,19 @@ func openRealDevice(busNum, devAddr int, configs []usb.ConfigDescriptor) (*usb.D
 	var eps hidEndpoints
 	if len(configs) > 0 {
 		for _, iface := range configs[0].Interfaces {
-			if iface.InterfaceClass != 0x03 {
-				continue
+			if iface.AlternateSetting != 0 {
+				continue // only claim alt setting 0
 			}
 			_ = devHandle.DetachKernelDriver(iface.InterfaceNumber)
 			if err := devHandle.ClaimInterface(iface.InterfaceNumber); err != nil {
-				log.Printf("[HID] 声明接口 %d 失败: %v", iface.InterfaceNumber, err)
+				log.Printf("[USB] 声明接口 %d 失败: %v", iface.InterfaceNumber, err)
 				continue
 			}
 			for _, ep := range iface.Endpoints {
-				if (ep.Attributes & 0x03) != 0x03 {
-					continue // only interrupt endpoints
-				}
 				hidEp := hidEndpoint{
 					InterfaceNumber: iface.InterfaceNumber,
 					EndpointAddress: ep.EndpointAddress,
+					Attributes:      ep.Attributes,
 					MaxPacketSize:   ep.MaxPacketSize,
 				}
 				if ep.EndpointAddress&0x80 != 0 {
@@ -53,7 +52,7 @@ func openRealDevice(busNum, devAddr int, configs []usb.ConfigDescriptor) (*usb.D
 			}
 		}
 	}
-	log.Printf("[HID] 已打开真实设备，%d 个中断 IN 端点，%d 个中断 OUT 端点", len(eps.IN), len(eps.OUT))
+	log.Printf("[USB] 已打开真实设备，%d 个 IN 端点，%d 个 OUT 端点", len(eps.IN), len(eps.OUT))
 	return devHandle, eps, nil
 }
 
@@ -74,10 +73,11 @@ func pollEndpoint(ctx context.Context, dev *usb.DeviceHandle, ep hidEndpoint, p 
 	if pktSize < 8 {
 		pktSize = 8
 	}
-	if pktSize > 255 {
-		pktSize = 255
+	if pktSize > 512 {
+		pktSize = 512
 	}
-	log.Printf("[HID] 轮询接口 %d 端点 0x%02X", ep.InterfaceNumber, ep.EndpointAddress)
+	epType := ep.Attributes & 0x03
+	log.Printf("[USB] 轮询接口 %d 端点 0x%02X (type=%d)", ep.InterfaceNumber, ep.EndpointAddress, epType)
 
 	for {
 		select {
@@ -85,16 +85,30 @@ func pollEndpoint(ctx context.Context, dev *usb.DeviceHandle, ep hidEndpoint, p 
 			return
 		default:
 		}
-		data, err := dev.InterruptRead(ep.EndpointAddress, pktSize, 100)
+
+		var data []byte
+		var err error
+
+		switch epType {
+		case 0x02: // Bulk
+			data, err = dev.BulkRead(ep.EndpointAddress, pktSize, 100)
+		case 0x03: // Interrupt
+			data, err = dev.InterruptRead(ep.EndpointAddress, pktSize, 100)
+		default:
+			// Isochronous not supported via libusb sync API, skip
+			log.Printf("[USB] 等时端点 0x%02X 不支持同步读取，跳过", ep.EndpointAddress)
+			return
+		}
+
 		if err != nil {
-			log.Printf("[HID] 读取错误: %v", err)
+			log.Printf("[USB] 读取错误 ep=0x%02X: %v", ep.EndpointAddress, err)
 			return
 		}
 		if len(data) == 0 {
 			continue
 		}
 		if debug {
-			log.Printf("[DEBUG][HID→Pipe] iface=%d ep=0x%02X len=%d data=%x", ep.InterfaceNumber, ep.EndpointAddress, len(data), data)
+			log.Printf("[DEBUG][USB→Pipe] iface=%d ep=0x%02X len=%d data=%x", ep.InterfaceNumber, ep.EndpointAddress, len(data), data)
 		}
 		msg := pipe.DataMsg(pipe.DeviceToHost, ep.EndpointAddress, ep.InterfaceNumber, data)
 		if err := p.SendDeviceToHost(ctx, msg); err != nil {
@@ -123,15 +137,25 @@ func forwardOutToRealDevice(ctx context.Context, dev *usb.DeviceHandle, outEPs [
 
 		outEP, ok := outMap[msg.Interface]
 		if !ok {
-			// No OUT endpoint for this interface - data is dropped
 			continue
 		}
 
+		epType := outEP.Attributes & 0x03
 		if debug {
-			log.Printf("[DEBUG][Pipe→HID] iface=%d ep=0x%02X len=%d data=%x", msg.Interface, outEP.EndpointAddress, len(msg.Data), msg.Data)
+			log.Printf("[DEBUG][Pipe→USB] iface=%d ep=0x%02X type=%d len=%d data=%x", msg.Interface, outEP.EndpointAddress, epType, len(msg.Data), msg.Data)
 		}
-		if err := dev.InterruptWrite(outEP.EndpointAddress, msg.Data, 1000); err != nil {
-			log.Printf("[HID] 写入真实设备 ep=0x%02X 失败: %v", outEP.EndpointAddress, err)
+
+		switch epType {
+		case 0x02: // Bulk
+			if err := dev.BulkWrite(outEP.EndpointAddress, msg.Data, 1000); err != nil {
+				log.Printf("[USB] 批量写入 ep=0x%02X 失败: %v", outEP.EndpointAddress, err)
+			}
+		case 0x03: // Interrupt
+			if err := dev.InterruptWrite(outEP.EndpointAddress, msg.Data, 1000); err != nil {
+				log.Printf("[USB] 中断写入 ep=0x%02X 失败: %v", outEP.EndpointAddress, err)
+			}
+		default:
+			log.Printf("[USB] 不支持的端点类型 %d ep=0x%02X", epType, outEP.EndpointAddress)
 		}
 	}
 }

@@ -113,6 +113,7 @@ func (f *FFSFunction) WriteDescriptors(fsDescs, hsDescs [][]byte, fsCount, hsCou
 	// Step 1: Write descriptors (FFS reads descriptors in FFS_READ_DESCRIPTORS state)
 	descData := f.buildDescriptorsBlob(fsDescs, hsDescs, nil, fsCount, hsCount, 0)
 	fmt.Printf("[FFS] writing descriptors (%d bytes, fs_count=%d, hs_count=%d)\n", len(descData), fsCount, hsCount)
+	fmt.Printf("[FFS] descriptor hex: %x\n", descData)
 	if _, err := file.Write(descData); err != nil {
 		return fmt.Errorf("write descriptors to ep0: %w", err)
 	}

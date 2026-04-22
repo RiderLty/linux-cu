@@ -81,6 +81,45 @@ func buildFFSDescriptorsWithCounts(configs []usb.ConfigDescriptor) (fsDescs, hsD
 	return
 }
 
+// buildNonHIDFFSDescriptors builds FFS descriptor blobs for non-HID interfaces only.
+// HID interfaces are handled by usb_f_hid, so FFS only needs non-HID interfaces.
+// ifaceNums contains unique interface numbers (from alt setting 0 only).
+func buildNonHIDFFSDescriptors(configs []usb.ConfigDescriptor) (fsDescs, hsDescs [][]byte, counts ffsDescCounts, ifaceNums []uint8) {
+	if len(configs) == 0 {
+		return nil, nil, counts, nil
+	}
+	cfg := configs[0]
+
+	seen := make(map[uint8]bool)
+	var fsBlob, hsBlob []byte
+	for _, iface := range cfg.Interfaces {
+		if iface.InterfaceClass == 0x03 {
+			continue // skip HID interfaces
+		}
+		if iface.AlternateSetting == 0 && !seen[iface.InterfaceNumber] {
+			ifaceNums = append(ifaceNums, iface.InterfaceNumber)
+			seen[iface.InterfaceNumber] = true
+		}
+		fsBlob = append(fsBlob, buildIfaceDesc(iface)...)
+		hsBlob = append(hsBlob, buildIfaceDesc(iface)...)
+		for _, ep := range iface.Endpoints {
+			fsBlob = append(fsBlob, buildEPDesc(ep)...)
+			hsBlob = append(hsBlob, buildEPDesc(ep)...)
+		}
+	}
+
+	if len(fsBlob) == 0 {
+		return nil, nil, counts, nil
+	}
+
+	counts.FSCount = countDescriptors(fsBlob)
+	counts.HSCount = countDescriptors(hsBlob)
+
+	fsDescs = [][]byte{fsBlob}
+	hsDescs = [][]byte{hsBlob}
+	return
+}
+
 // countDescriptors walks a raw descriptor blob and counts individual descriptors
 func countDescriptors(data []byte) int {
 	count := 0

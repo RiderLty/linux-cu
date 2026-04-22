@@ -129,6 +129,49 @@ func (d *DeviceHandle) InterruptWrite(endpoint uint8, data []byte, timeoutMs int
 	return nil
 }
 
+// BulkRead 执行批量 IN 传输
+func (d *DeviceHandle) BulkRead(endpoint uint8, length int, timeoutMs int) ([]byte, error) {
+	buf := make([]byte, length)
+	var transferred C.int
+	rc := C.libusb_bulk_transfer(
+		d.handle,
+		C.uchar(endpoint),
+		(*C.uchar)(unsafe.Pointer(&buf[0])),
+		C.int(length),
+		&transferred,
+		C.uint(timeoutMs),
+	)
+	if rc < 0 {
+		if rc == C.LIBUSB_ERROR_TIMEOUT {
+			return nil, nil
+		}
+		return nil, fmt.Errorf("bulk transfer ep 0x%02X: %s", endpoint, libusbErrStr(rc))
+	}
+	return buf[:int(transferred)], nil
+}
+
+// BulkWrite 执行批量 OUT 传输
+func (d *DeviceHandle) BulkWrite(endpoint uint8, data []byte, timeoutMs int) error {
+	var buf *C.uchar
+	length := len(data)
+	if length > 0 {
+		buf = (*C.uchar)(unsafe.Pointer(&data[0]))
+	}
+	var transferred C.int
+	rc := C.libusb_bulk_transfer(
+		d.handle,
+		C.uchar(endpoint),
+		buf,
+		C.int(length),
+		&transferred,
+		C.uint(timeoutMs),
+	)
+	if rc < 0 {
+		return fmt.Errorf("bulk write ep 0x%02X: %s", endpoint, libusbErrStr(rc))
+	}
+	return nil
+}
+
 // CtrlTransferResult 控制传输结果
 type CtrlTransferResult struct {
 	Data  []byte

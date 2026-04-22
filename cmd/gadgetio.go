@@ -34,9 +34,10 @@ func startGadgetIO(ctx context.Context, g *gadget.Gadget, p *pipe.Pipe, busNum, 
 		}
 	}()
 
-	// Writer: pipe DeviceToHost -> /dev/hidgN write
+	// Writer: pipe DeviceToHost -> /dev/hidgN write or FFS
 	// Use IfaceToHidIdx to translate original interface number to HID function index
 	ifaceMap := g.IfaceToHidIdx
+	ffsMap := g.IfaceToFFSIdx
 	go func() {
 		for {
 			msg, err := p.RecvDeviceToHost(ctx)
@@ -45,17 +46,27 @@ func startGadgetIO(ctx context.Context, g *gadget.Gadget, p *pipe.Pipe, busNum, 
 			}
 			switch msg.Type {
 			case pipe.MsgData:
-				hidIdx, ok := ifaceMap[msg.Interface]
-				if !ok || hidIdx >= len(hidFiles) || hidFiles[hidIdx] == nil {
-					log.Printf("[Gadget] 无 hidg 设备对应接口 %d (映射=%v, 共 %d 个)", msg.Interface, ifaceMap, len(hidFiles))
+				// Try HID first
+				if hidIdx, ok := ifaceMap[msg.Interface]; ok && hidIdx < len(hidFiles) && hidFiles[hidIdx] != nil {
+					if debug {
+						log.Printf("[DEBUG][Pipe→HIDG] iface=%d hidg%d len=%d data=%x", msg.Interface, hidIdx, len(msg.Data), msg.Data)
+					}
+					if _, err := hidFiles[hidIdx].Write(msg.Data); err != nil {
+						log.Printf("[Gadget] 写入 %s 失败: %v", hidFuncs[hidIdx].DevPath, err)
+					}
 					continue
 				}
-				if debug {
-					log.Printf("[DEBUG][Pipe→HIDG] iface=%d hidg%d len=%d data=%x", msg.Interface, hidIdx, len(msg.Data), msg.Data)
+				// Try FFS - data is forwarded via the pipe to writeFFSEndpoints
+				if _, ok := ffsMap[msg.Interface]; ok {
+					// FFS OUT data is handled by writeFFSEndpoints reading from pipe
+					// This message came from real device -> host, so it goes to FFS IN endpoint
+					// which is handled by the FFS I/O goroutines
+					if debug {
+						log.Printf("[DEBUG][Pipe→FFS] iface=%d len=%d data=%x", msg.Interface, len(msg.Data), msg.Data)
+					}
+					continue
 				}
-				if _, err := hidFiles[hidIdx].Write(msg.Data); err != nil {
-					log.Printf("[Gadget] 写入 %s 失败: %v", hidFuncs[hidIdx].DevPath, err)
-				}
+				log.Printf("[Gadget] 无设备对应接口 %d (HID映射=%v, FFS映射=%v)", msg.Interface, ifaceMap, ffsMap)
 			case pipe.MsgControl:
 				handleGadgetCtrlReq(ctx, msg, busNum, devAddr, p)
 			}
