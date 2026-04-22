@@ -1,0 +1,34 @@
+device:
+    bcdUSB: "0x0200"
+    bDeviceClass: 0
+    bDeviceSubClass: 0
+    bDeviceProtocol: 0
+    bMaxPacketSize0: 64
+    idVendor: "0x057e"
+    idProduct: "0x2009"
+    bcdDevice: "0x0020"
+    manufacturer: Nintendo Co., Ltd.
+    product: Pro Controller
+    serialNumber: "000000000001"
+configs:
+    - bConfigurationValue: 1
+      MaxPower: 250
+      selfPowered: false
+      remoteWakeup: true
+      bNumInterfaces: 1
+      interfaces:
+        - bInterfaceNumber: 0
+          bAlternateSetting: 0
+          bInterfaceClass: 3
+          bInterfaceSubClass: 0
+          bInterfaceProtocol: 0
+          endpoints:
+            - bEndpointAddress: 132
+              bmAttributes: 3
+              wMaxPacketSize: 64
+              bInterval: 8
+            - bEndpointAddress: 3
+              bmAttributes: 3
+              wMaxPacketSize: 64
+              bInterval: 8
+          reportDescriptor: 050115000904a1018530050105091901290a150025017501950a5500650081020509190b290e150025017501950481027501950281030b01000100a1000b300001000b310001000b320001000b35000100150027ffff0000751095048102c00b39000100150025073500463b0165147504950181020509190f2912150025017501950481027508953481030600ff852109017508953f8103858109027508953f8103850109037508953f9183851009047508953f9183858009057508953f9183858209067508953f9183c0
