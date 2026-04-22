@@ -127,7 +127,7 @@ func runSend(device string, target string, debug bool) error {
 	// Goroutine B: Read from network -> parse -> write to USB OUT endpoints
 	go recvAndWrite(ctx, conn, devHandle, outMap, debug)
 
-	log.Println("[主] 进入主循环，Ctrl+C 退出 (发送模式: USB 设备 ↔ 网络)")
+	log.Println("[主] 进入主循环，Ctrl+C 退出 (发送模式: USB 设备 ↔ IPC)")
 	<-ctx.Done()
 	log.Println("[主] 退出")
 	return nil
@@ -143,7 +143,7 @@ func pollAndSend(ctx context.Context, dev *usb.DeviceHandle, ep hidEndpoint, con
 		pktSize = 512
 	}
 	epType := ep.Attributes & 0x03
-	log.Printf("[Send] 轮询接口 %d 端点 0x%02X (type=%d) -> 网络", ep.InterfaceNumber, ep.EndpointAddress, epType)
+	log.Printf("[Send] 轮询接口 %d 端点 0x%02X (type=%d) -> IPC", ep.InterfaceNumber, ep.EndpointAddress, epType)
 
 	for {
 		select {
@@ -179,7 +179,7 @@ func pollAndSend(ctx context.Context, dev *usb.DeviceHandle, ep hidEndpoint, con
 
 		pkt := buildInjectPacket(ep.InterfaceNumber, data)
 		if _, err := conn.Write(pkt); err != nil {
-			log.Printf("[Send] 网络写入失败: %v", err)
+			log.Printf("[Send] IPC写入失败: %v", err)
 			return
 		}
 	}
@@ -211,7 +211,7 @@ func recvAndWrite(ctx context.Context, conn net.Conn, dev *usb.DeviceHandle, out
 			if ctx.Err() != nil {
 				return
 			}
-			log.Printf("[Send] 网络读取错误: %v", err)
+			log.Printf("[Send] IPC读取错误: %v", err)
 			return
 		}
 		if n == 0 {
@@ -234,7 +234,7 @@ func recvAndWrite(ctx context.Context, conn net.Conn, dev *usb.DeviceHandle, out
 
 		epType := outEP.Attributes & 0x03
 		if debug {
-			log.Printf("[DEBUG][Net→USB] iface=%d ep=0x%02X type=%d len=%d data=%x", ifaceNum, outEP.EndpointAddress, epType, len(data), data)
+			log.Printf("[DEBUG][IPC→USB] iface=%d ep=0x%02X type=%d len=%d data=%x", ifaceNum, outEP.EndpointAddress, epType, len(data), data)
 		}
 
 		switch epType {

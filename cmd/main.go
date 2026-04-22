@@ -136,7 +136,7 @@ func loadCmd() *cobra.Command {
 func sendCmd() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "send <device> <target>",
-		Short: "发送模式：读取 USB 设备数据发送到网络目标，并接收网络数据写回设备",
+		Short: "发送模式：读取 USB 设备数据发送到IPC目标，并接收IPC数据写回设备",
 		Long: `发送模式：不创建 Gadget 设备，仅读取指定 USB 设备的数据，
 通过 UDS 或 UDP 发送到指定目标，并接收远端数据写回设备。
 
