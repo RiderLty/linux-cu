@@ -21,6 +21,7 @@ configs:
           bInterfaceClass: 3
           bInterfaceSubClass: 0
           bInterfaceProtocol: 0
+          interfaceString: Gamepad
           endpoints:
             - bEndpointAddress: 1
               bmAttributes: 3
@@ -36,6 +37,7 @@ configs:
           bInterfaceClass: 3
           bInterfaceSubClass: 0
           bInterfaceProtocol: 0
+          interfaceString: Keyboard
           endpoints:
             - bEndpointAddress: 2
               bmAttributes: 3
@@ -51,6 +53,7 @@ configs:
           bInterfaceClass: 3
           bInterfaceSubClass: 0
           bInterfaceProtocol: 0
+          interfaceString: Mouse
           endpoints:
             - bEndpointAddress: 131
               bmAttributes: 3
@@ -62,6 +65,7 @@ configs:
           bInterfaceClass: 3
           bInterfaceSubClass: 0
           bInterfaceProtocol: 0
+          interfaceString: Touch Screen
           endpoints:
             - bEndpointAddress: 132
               bmAttributes: 3

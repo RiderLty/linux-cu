@@ -120,11 +120,12 @@ func runEmulate(busNum, devAddr int, debug bool, udsAddr, udpAddr string) error 
 			}
 		}
 		hidCfg := gadget.HIDConfig{
-			Instance:   instance,
-			Protocol:   iface.InterfaceProtocol,
-			SubClass:   iface.InterfaceSubClass,
-			ReportLen:  reportLen,
-			ReportDesc: iface.ReportDescriptor,
+			Instance:        instance,
+			Protocol:        iface.InterfaceProtocol,
+			SubClass:        iface.InterfaceSubClass,
+			ReportLen:       reportLen,
+			ReportDesc:      iface.ReportDescriptor,
+			InterfaceString: iface.InterfaceString,
 		}
 		log.Printf("[Gadget] 添加 HID 功能 %s (iface=%d, protocol=%d, subclass=%d, report_len=%d, report_desc=%d bytes)",
 			instance, iface.InterfaceNumber, hidCfg.Protocol, hidCfg.SubClass, hidCfg.ReportLen, len(hidCfg.ReportDesc))
