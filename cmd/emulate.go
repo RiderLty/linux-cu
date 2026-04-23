@@ -54,10 +54,12 @@ func runEmulate(busNum, devAddr int, debug bool, udsAddr, udpAddr string) error 
 	// Use original device's configuration attributes
 	var maxPower uint8 = 100
 	var selfPowered, remoteWakeup bool
+	var configString string
 	if len(configs) > 0 {
 		maxPower = configs[0].MaxPower
 		selfPowered = configs[0].SelfPowered
 		remoteWakeup = configs[0].RemoteWakeup
+		configString = configs[0].ConfigString
 	}
 
 	gadgetCfg := gadget.Config{
@@ -65,7 +67,7 @@ func runEmulate(busNum, devAddr int, debug bool, udsAddr, udpAddr string) error 
 		PID:            devDesc.ProductID,
 		Manufacturer:   devDesc.Manufacturer,
 		Product:        devDesc.Product,
-		SerialNumber:   "", // don't set empty string - it creates a spurious string descriptor
+		SerialNumber:   devDesc.SerialNumber,
 		DeviceClass:    devDesc.DeviceClass,
 		DeviceSubClass: devDesc.DeviceSubClass,
 		DeviceProtocol: devDesc.DeviceProtocol,
@@ -75,6 +77,7 @@ func runEmulate(busNum, devAddr int, debug bool, udsAddr, udpAddr string) error 
 		MaxPower:       maxPower,
 		SelfPowered:    selfPowered,
 		RemoteWakeup:   remoteWakeup,
+		ConfigString:   configString,
 	}
 
 	log.Printf("[Gadget] 创建 VID=0x%04X PID=0x%04X", devDesc.VendorID, devDesc.ProductID)

@@ -37,11 +37,12 @@ func runLoad(yamlPath string, debug bool, udsAddr, udpAddr string, recvMode bool
 	hidIfaces := p.HIDInterfaces()
 	for i, hi := range hidIfaces {
 		hidCfg := gadget.HIDConfig{
-			Instance:   fmt.Sprintf("usb%d", i),
-			Protocol:   hi.Protocol,
-			SubClass:   hi.SubClass,
-			ReportLen:  hi.ReportLen,
-			ReportDesc: hi.ReportDesc,
+			Instance:        fmt.Sprintf("usb%d", i),
+			Protocol:        hi.Protocol,
+			SubClass:        hi.SubClass,
+			ReportLen:       hi.ReportLen,
+			ReportDesc:      hi.ReportDesc,
+			InterfaceString: hi.InterfaceString,
 		}
 		log.Printf("[Gadget] 添加 HID 功能 usb%d (iface=%d, protocol=%d, subclass=%d, report_len=%d, report_desc=%d bytes)",
 			i, hi.InterfaceNumber, hi.Protocol, hi.SubClass, hi.ReportLen, len(hi.ReportDesc))

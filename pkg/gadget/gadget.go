@@ -35,6 +35,7 @@ type Config struct {
 	Manufacturer   string
 	Product        string
 	SerialNumber   string
+	ConfigString   string // iConfiguration
 	DeviceClass    uint8
 	DeviceSubClass uint8
 	DeviceProtocol uint8
@@ -133,6 +134,11 @@ func Create(cfg Config) (*Gadget, error) {
 	if err := os.MkdirAll(cfgStringsDir, 0755); err != nil {
 		g.cleanup()
 		return nil, err
+	}
+	if cfg.ConfigString != "" {
+		p := filepath.Join(cfgStringsDir, "configuration")
+		log.Printf("[Gadget] write %s = %s", p, cfg.ConfigString)
+		writeFile(p, cfg.ConfigString)
 	}
 
 	bmAttrs := uint8(0x80)

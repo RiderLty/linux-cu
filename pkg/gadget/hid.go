@@ -24,11 +24,12 @@ type HIDFunction struct {
 
 // HIDConfig holds parameters for creating a HID function
 type HIDConfig struct {
-	Instance    string // e.g. "usb0"
-	Protocol    uint8
-	SubClass    uint8
-	ReportLen   uint16
-	ReportDesc  []byte
+	Instance       string // e.g. "usb0"
+	Protocol       uint8
+	SubClass       uint8
+	ReportLen      uint16
+	ReportDesc     []byte
+	InterfaceString string // iInterface string for the HID function
 }
 
 // NewHIDFunction creates a HID function directory in ConfigFS.
@@ -67,6 +68,21 @@ func NewHIDFunction(gadgetPath string, cfg HIDConfig) (*HIDFunction, error) {
 	log.Printf("[HID] write %s (%d bytes)", path, len(cfg.ReportDesc))
 	if err := os.WriteFile(path, cfg.ReportDesc, 0644); err != nil {
 		return nil, fmt.Errorf("write report_desc: %w", err)
+	}
+
+	// Write interface string (iInterface) — without this, the kernel defaults to "HID Interface"
+	if cfg.InterfaceString != "" {
+		stringsDir := filepath.Join(funcPath, "strings", "0x409")
+		log.Printf("[HID] mkdir %s", stringsDir)
+		if err := os.MkdirAll(stringsDir, 0755); err != nil {
+			log.Printf("[HID] 警告: 创建 strings 目录失败: %v", err)
+		} else {
+			sPath := filepath.Join(stringsDir, "function")
+			log.Printf("[HID] write %s = %s", sPath, cfg.InterfaceString)
+			if err := writeFile(sPath, cfg.InterfaceString); err != nil {
+				log.Printf("[HID] 警告: 写入接口字符串失败: %v", err)
+			}
+		}
 	}
 
 	return &HIDFunction{

@@ -34,6 +34,7 @@ type DeviceDescYAML struct {
 // ConfigDescYAML is the YAML-serializable configuration descriptor.
 type ConfigDescYAML struct {
 	ConfigValue   uint8              `yaml:"bConfigurationValue"`
+	ConfigString  string             `yaml:"configString,omitempty"`
 	MaxPower      uint8              `yaml:"MaxPower"`
 	SelfPowered   bool               `yaml:"selfPowered"`
 	RemoteWakeup  bool               `yaml:"remoteWakeup"`
@@ -82,6 +83,7 @@ func FromDescriptors(devDesc usb.DeviceDescriptor, configs []usb.ConfigDescripto
 	for _, cfg := range configs {
 		cfgY := ConfigDescYAML{
 			ConfigValue:   cfg.ConfigValue,
+			ConfigString:  cfg.ConfigString,
 			MaxPower:      cfg.MaxPower,
 			SelfPowered:   cfg.SelfPowered,
 			RemoteWakeup:  cfg.RemoteWakeup,
@@ -146,12 +148,18 @@ func (p *DeviceProfile) ToGadgetConfig() gadget.Config {
 	vid := parseHex16(d.VendorID)
 	pid := parseHex16(d.ProductID)
 
+	var configString string
+	if len(p.Configs) > 0 {
+		configString = p.Configs[0].ConfigString
+	}
+
 	return gadget.Config{
 		VID:            vid,
 		PID:            pid,
 		Manufacturer:   d.Manufacturer,
 		Product:        d.Product,
 		SerialNumber:   d.SerialNumber,
+		ConfigString:   configString,
 		DeviceClass:    d.DeviceClass,
 		DeviceSubClass: d.DeviceSubClass,
 		DeviceProtocol: d.DeviceProtocol,
@@ -188,11 +196,12 @@ func (p *DeviceProfile) HIDInterfaces() []HIDInterfaceInfo {
 			reportDesc, _ = hex.DecodeString(iface.ReportDescriptor)
 		}
 		result = append(result, HIDInterfaceInfo{
-			InterfaceNumber: iface.InterfaceNumber,
-			Protocol:        iface.InterfaceProtocol,
-			SubClass:        iface.InterfaceSubClass,
-			ReportLen:       reportLen,
-			ReportDesc:      reportDesc,
+			InterfaceNumber:  iface.InterfaceNumber,
+			Protocol:         iface.InterfaceProtocol,
+			SubClass:         iface.InterfaceSubClass,
+			ReportLen:        reportLen,
+			ReportDesc:       reportDesc,
+			InterfaceString:  iface.InterfaceString,
 		})
 	}
 	return result
@@ -200,11 +209,12 @@ func (p *DeviceProfile) HIDInterfaces() []HIDInterfaceInfo {
 
 // HIDInterfaceInfo holds parsed HID interface info for gadget creation.
 type HIDInterfaceInfo struct {
-	InterfaceNumber uint8
-	Protocol        uint8
-	SubClass        uint8
-	ReportLen       uint16
-	ReportDesc      []byte
+	InterfaceNumber  uint8
+	Protocol         uint8
+	SubClass         uint8
+	ReportLen        uint16
+	ReportDesc       []byte
+	InterfaceString  string
 }
 
 // ConfigAttrs returns the first config's MaxPower, SelfPowered, RemoteWakeup.

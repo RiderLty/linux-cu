@@ -38,7 +38,7 @@ func setupFFS(ffs *gadget.FFSFunction, configs []usb.ConfigDescriptor, devDesc u
 
 	// Build and write descriptors for non-HID interfaces
 	fsDescs, hsDescs, counts, _ := buildNonHIDFFSDescriptors(configs)
-	strLangs := buildFFSStrings(devDesc)
+	strLangs := buildFFSStrings(devDesc, configs)
 
 	log.Printf("[FFS] 写入描述符 (fs_count=%d, hs_count=%d)...", counts.FSCount, counts.HSCount)
 	if err := ffs.WriteDescriptors(fsDescs, hsDescs, counts.FSCount, counts.HSCount, strLangs); err != nil {

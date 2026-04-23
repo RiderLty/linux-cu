@@ -17,9 +17,15 @@ func buildFFSDescriptors(configs []usb.ConfigDescriptor) (fsDescs, hsDescs [][]b
 
 	// Build flat descriptor blob and count total descriptors
 	var fsBlob, hsBlob []byte
+	strIdx := uint8(1) // FFS string indices start at 1
 	for _, iface := range cfg.Interfaces {
-		fsBlob = append(fsBlob, buildIfaceDesc(iface)...)
-		hsBlob = append(hsBlob, buildIfaceDesc(iface)...)
+		iStrIdx := uint8(0)
+		if iface.InterfaceString != "" {
+			iStrIdx = strIdx
+			strIdx++
+		}
+		fsBlob = append(fsBlob, buildIfaceDescWithStr(iface, iStrIdx)...)
+		hsBlob = append(hsBlob, buildIfaceDescWithStr(iface, iStrIdx)...)
 		for _, ep := range iface.Endpoints {
 			fsBlob = append(fsBlob, buildEPDesc(ep)...)
 			hsBlob = append(hsBlob, buildEPDesc(ep)...)
@@ -60,9 +66,15 @@ func buildFFSDescriptorsWithCounts(configs []usb.ConfigDescriptor) (fsDescs, hsD
 	cfg := configs[0]
 
 	var fsBlob, hsBlob []byte
+	strIdx := uint8(1)
 	for _, iface := range cfg.Interfaces {
-		fsBlob = append(fsBlob, buildIfaceDesc(iface)...)
-		hsBlob = append(hsBlob, buildIfaceDesc(iface)...)
+		iStrIdx := uint8(0)
+		if iface.InterfaceString != "" {
+			iStrIdx = strIdx
+			strIdx++
+		}
+		fsBlob = append(fsBlob, buildIfaceDescWithStr(iface, iStrIdx)...)
+		hsBlob = append(hsBlob, buildIfaceDescWithStr(iface, iStrIdx)...)
 		for _, ep := range iface.Endpoints {
 			fsBlob = append(fsBlob, buildEPDesc(ep)...)
 			hsBlob = append(hsBlob, buildEPDesc(ep)...)
@@ -92,6 +104,7 @@ func buildNonHIDFFSDescriptors(configs []usb.ConfigDescriptor) (fsDescs, hsDescs
 
 	seen := make(map[uint8]bool)
 	var fsBlob, hsBlob []byte
+	strIdx := uint8(1) // FFS string indices start at 1
 	for _, iface := range cfg.Interfaces {
 		if iface.InterfaceClass == 0x03 {
 			continue // skip HID interfaces
@@ -100,8 +113,13 @@ func buildNonHIDFFSDescriptors(configs []usb.ConfigDescriptor) (fsDescs, hsDescs
 			ifaceNums = append(ifaceNums, iface.InterfaceNumber)
 			seen[iface.InterfaceNumber] = true
 		}
-		fsBlob = append(fsBlob, buildIfaceDesc(iface)...)
-		hsBlob = append(hsBlob, buildIfaceDesc(iface)...)
+		iStrIdx := uint8(0)
+		if iface.InterfaceString != "" {
+			iStrIdx = strIdx
+			strIdx++
+		}
+		fsBlob = append(fsBlob, buildIfaceDescWithStr(iface, iStrIdx)...)
+		hsBlob = append(hsBlob, buildIfaceDescWithStr(iface, iStrIdx)...)
 		for _, ep := range iface.Endpoints {
 			fsBlob = append(fsBlob, buildEPDesc(ep)...)
 			hsBlob = append(hsBlob, buildEPDesc(ep)...)
@@ -139,6 +157,10 @@ func countDescriptors(data []byte) int {
 }
 
 func buildIfaceDesc(i usb.InterfaceDescriptor) []byte {
+	return buildIfaceDescWithStr(i, 0)
+}
+
+func buildIfaceDescWithStr(i usb.InterfaceDescriptor, iInterface uint8) []byte {
 	b := make([]byte, 9)
 	b[0] = 9
 	b[1] = 4
@@ -148,7 +170,7 @@ func buildIfaceDesc(i usb.InterfaceDescriptor) []byte {
 	b[5] = i.InterfaceClass
 	b[6] = i.InterfaceSubClass
 	b[7] = i.InterfaceProtocol
-	b[8] = 0
+	b[8] = iInterface
 	return b
 }
 
@@ -181,7 +203,8 @@ func buildHIDDesc(reportDesc []byte) []byte {
 
 // buildFFSStrings builds string descriptors for FunctionFS.
 // FunctionFS requires string data written to ep0 after descriptors.
-func buildFFSStrings(devDesc usb.DeviceDescriptor) []gadget.LangStrings {
+// String indices are 1-based and match the order in the Strings slice.
+func buildFFSStrings(devDesc usb.DeviceDescriptor, configs []usb.ConfigDescriptor) []gadget.LangStrings {
 	strs := []string{}
 	if devDesc.Manufacturer != "" {
 		strs = append(strs, devDesc.Manufacturer)
@@ -191,6 +214,18 @@ func buildFFSStrings(devDesc usb.DeviceDescriptor) []gadget.LangStrings {
 	}
 	if devDesc.SerialNumber != "" {
 		strs = append(strs, devDesc.SerialNumber)
+	}
+	// Add iInterface strings for non-HID interfaces (in the same order as buildNonHIDFFSDescriptors)
+	if len(configs) > 0 {
+		cfg := configs[0]
+		for _, iface := range cfg.Interfaces {
+			if iface.InterfaceClass == 0x03 {
+				continue
+			}
+			if iface.InterfaceString != "" {
+				strs = append(strs, iface.InterfaceString)
+			}
+		}
 	}
 	if len(strs) == 0 {
 		return nil

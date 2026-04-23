@@ -1,0 +1,70 @@
+device:
+    bcdUSB: "0x0200"
+    bDeviceClass: 0
+    bDeviceSubClass: 0
+    bDeviceProtocol: 0
+    bMaxPacketSize0: 64
+    idVendor: "0x054c"
+    idProduct: "0x0ce6"
+    bcdDevice: "0x0100"
+    manufacturer: Sony Interactive Entertainment
+    product: DualSense Wireless Controller
+configs:
+    - bConfigurationValue: 1
+      MaxPower: 50
+      selfPowered: false
+      remoteWakeup: true
+      bNumInterfaces: 4
+      interfaces:
+        - bInterfaceNumber: 0
+          bAlternateSetting: 0
+          bInterfaceClass: 3
+          bInterfaceSubClass: 0
+          bInterfaceProtocol: 0
+          endpoints:
+            - bEndpointAddress: 1
+              bmAttributes: 3
+              wMaxPacketSize: 64
+              bInterval: 1
+            - bEndpointAddress: 129
+              bmAttributes: 3
+              wMaxPacketSize: 64
+              bInterval: 1
+          reportDescriptor: 05010905a1018501093009310932093509330934150026ff007508950681020600ff09209501810205010939150025073500463b016514750495018142650005091901290f150025017501950f81020600ff0921950d81020600ff0922150026ff0075089534810285020923952f9102850509339528b10285080934952fb102850909249513b102850a0925951ab102850b09419529b102850c09429529b10285200926953fb102852109279504b10285220940953fb10285800928953fb10285810929953fb1028582092a9509b1028583092b953fb1028584092c953fb1028585092d9502b10285a0092e9501b10285e0092f953fb10285f00930953fb10285f10931953fb10285f20932950fb10285f40935953fb10285f509369503b102c0
+        - bInterfaceNumber: 1
+          bAlternateSetting: 0
+          bInterfaceClass: 3
+          bInterfaceSubClass: 0
+          bInterfaceProtocol: 0
+          endpoints:
+            - bEndpointAddress: 2
+              bmAttributes: 3
+              wMaxPacketSize: 64
+              bInterval: 1
+            - bEndpointAddress: 130
+              bmAttributes: 3
+              wMaxPacketSize: 64
+              bInterval: 1
+          reportDescriptor: 05010906a1018501050719e029e715002501950875018102950175088101050819012905950575019102950175039101050719002aff00150026ff00950675088100c0
+        - bInterfaceNumber: 2
+          bAlternateSetting: 0
+          bInterfaceClass: 3
+          bInterfaceSubClass: 0
+          bInterfaceProtocol: 0
+          endpoints:
+            - bEndpointAddress: 131
+              bmAttributes: 3
+              wMaxPacketSize: 64
+              bInterval: 1
+          reportDescriptor: 05010902a1010901a100050919012905150025019505750181029501750381010501093009311581257f95027508810609381581257f950175088106050c0a38021581257f950175088106c0c0
+        - bInterfaceNumber: 3
+          bAlternateSetting: 0
+          bInterfaceClass: 3
+          bInterfaceSubClass: 0
+          bInterfaceProtocol: 0
+          endpoints:
+            - bEndpointAddress: 132
+              bmAttributes: 3
+              wMaxPacketSize: 64
+              bInterval: 1
+          reportDescriptor: 050d0904a1010922a10209421500250175019501810295078103095175089501810205010930150027feffff7f7520950181020931150027feffff7f752095018102c0050d09542502750895018102c0
